@@ -9,7 +9,11 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "test": "jest --config jest.config.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "web:dev": "cd web/server && npm run dev",
+    "web:client": "cd web/client && npm run dev",
+    "web:build": "cd web/client && npm run build",
+    "dev:all": "start npm run web:dev && start npm run web:client"
   },
   "dependencies": {
     "axios": "^1.6.0",

@@ -4,3 +4,15 @@ dist/
 *.log
 coverage/
 .DS_Store
+
+# TypeScript 编译产物
+*.js
+*.js.map
+*.d.ts
+*.d.ts.map
+!vite.config.ts
+!jest.config.js
+
+# Web 编译产物
+web/server/dist/
+web/client/dist/
