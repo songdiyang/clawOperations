@@ -1,7 +1,11 @@
 /* 全局样式 */
-body {
+html, body, #root {
+  width: 100%;
   margin: 0;
   padding: 0;
+}
+
+body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -84,6 +88,7 @@ body {
 /* 核心布局修复 - 确保内容区域正确展开 */
 .ant-layout {
   display: flex !important;
+  width: 100% !important;
 }
 
 .ant-layout-content {
@@ -122,4 +127,14 @@ body {
 /* 卡片内容 */
 .ant-card-body {
   overflow-x: auto;
+}
+
+/* 确保 Row 组件填满宽度 */
+.ant-row {
+  width: 100%;
+}
+
+/* 确保页面内容填满 */
+.ant-layout-content > div {
+  width: 100% !important;
 }

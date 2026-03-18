@@ -1,13 +1,17 @@
 import React from 'react';
-import { Layout, Menu, Typography } from 'antd';
+import { Layout, Menu, Typography, Dropdown, Avatar, Space, Button } from 'antd';
 import {
   SettingOutlined,
   VideoCameraOutlined,
   UnorderedListOutlined,
+  RobotOutlined,
+  UserOutlined,
+  LogoutOutlined,
 } from '@ant-design/icons';
+import { useAuth } from '../contexts/AuthContext';
 
 const { Header, Sider, Content } = Layout;
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -16,6 +20,11 @@ interface LayoutProps {
 }
 
 const menuItems = [
+  {
+    key: 'ai',
+    icon: <RobotOutlined />,
+    label: 'AI 创作',
+  },
   {
     key: 'auth',
     icon: <SettingOutlined />,
@@ -34,8 +43,28 @@ const menuItems = [
 ];
 
 const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick }) => {
+  const { user, logout } = useAuth();
+
+  const userMenuItems = [
+    {
+      key: 'profile',
+      icon: <UserOutlined />,
+      label: '个人中心',
+      onClick: () => onMenuClick('profile'),
+    },
+    {
+      type: 'divider' as const,
+    },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: '退出登录',
+      onClick: logout,
+    },
+  ];
+
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ minHeight: '100vh', width: '100%' }}>
       {/* 固定顶部导航 */}
       <Header style={{ 
         background: '#fff', 
@@ -47,14 +76,31 @@ const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick }
         right: 0,
         zIndex: 100,
         height: 64,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
       }}>
-        <Title level={4} style={{ margin: 0, lineHeight: '64px' }}>
-          🦞 ClawOperations - 抖音发布工具
+        <Title level={4} style={{ margin: 0 }}>
+          ClawOperations - 抖音发布工具
         </Title>
+        <Space>
+          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+            <Button type="text" style={{ height: 'auto', padding: '4px 8px' }}>
+              <Space>
+                <Avatar 
+                  size="small" 
+                  icon={<UserOutlined />} 
+                  style={{ backgroundColor: '#1890ff' }}
+                />
+                <Text>{user?.username || '用户'}</Text>
+              </Space>
+            </Button>
+          </Dropdown>
+        </Space>
       </Header>
 
       {/* 主体区域 */}
-      <Layout style={{ marginTop: 64 }}>
+      <Layout style={{ marginTop: 64, width: '100%' }}>
         {/* 固定侧边栏 */}
         <Sider 
           width={200} 
@@ -78,10 +124,11 @@ const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick }
           />
         </Sider>
 
-        {/* 内容区域 - 关键修复：设置 marginLeft 和正确的宽度计算 */}
+        {/* 内容区域 - 填满整个可用宽度 */}
         <Content
           style={{
             marginLeft: 200,
+            width: 'calc(100% - 200px)',
             background: '#f0f2f5',
             padding: 24,
             minHeight: 'calc(100vh - 64px)',
@@ -93,6 +140,8 @@ const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick }
             padding: 24,
             borderRadius: 8,
             minHeight: 'calc(100vh - 112px)',
+            width: '100%',
+            boxSizing: 'border-box',
           }}>
             {children}
           </div>

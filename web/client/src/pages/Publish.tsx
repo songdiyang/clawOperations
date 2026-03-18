@@ -16,41 +16,79 @@ import {
   Divider,
   Row,
   Col,
+  Modal,
 } from 'antd';
-import { InboxOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons';
-import type { UploadFile } from 'antd/es/upload/interface';
+import {
+  InboxOutlined,
+  PlusOutlined,
+  VideoCameraOutlined,
+  ClockCircleOutlined,
+  SendOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  InfoCircleOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons';
+import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 import { publishApi, uploadApi } from '../api/client';
 import dayjs from 'dayjs';
 
-const { Title, Text } = Typography;
+const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 const { Dragger } = Upload;
+
+// 最大文件大小 4GB
+const MAX_FILE_SIZE = 4 * 1024 * 1024 * 1024;
+// 支持的视频格式
+const ACCEPTED_FORMATS = ['.mp4', '.mov', '.avi', '.webm', '.mkv'];
 
 const Publish: React.FC = () => {
   const [form] = Form.useForm();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [publishing, setPublishing] = useState(false);
   const [scheduleMode, setScheduleMode] = useState(false);
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [inputHashtag, setInputHashtag] = useState('');
   const [result, setResult] = useState<any>(null);
 
+  // 文件上传前验证
+  const beforeUpload: UploadProps['beforeUpload'] = (file) => {
+    // 验证文件大小
+    if (file.size > MAX_FILE_SIZE) {
+      message.error(`文件大小不能超过 4GB，当前文件大小: ${(file.size / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+      return Upload.LIST_IGNORE;
+    }
+
+    // 验证文件类型
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+    if (!ACCEPTED_FORMATS.includes(ext)) {
+      message.error(`不支持的文件格式: ${ext}，支持: ${ACCEPTED_FORMATS.join(', ')}`);
+      return Upload.LIST_IGNORE;
+    }
+
+    return false; // 阻止自动上传
+  };
+
   // 处理文件上传
-  const handleUpload = async (file: File) => {
+  const handleUpload = async (file: File): Promise<string | null> => {
     setUploading(true);
     setUploadProgress(0);
+    setUploadStatus('uploading');
     
     try {
       const response = await uploadApi.uploadFile(file, (progress) => {
         setUploadProgress(progress);
       });
       
+      setUploadStatus('success');
       message.success('视频上传成功');
       return response.data.data.videoId;
     } catch (error: any) {
-      message.error(error.response?.data?.error || '上传失败');
+      setUploadStatus('error');
+      message.error(error.response?.data?.error || '上传失败，请重试');
       return null;
     } finally {
       setUploading(false);
@@ -59,16 +97,23 @@ const Publish: React.FC = () => {
 
   // 添加 hashtag
   const handleAddHashtag = () => {
-    if (!inputHashtag.trim()) return;
+    const tag = inputHashtag.trim().replace(/^#/, ''); // 去除开头的#号
+    if (!tag) return;
+    
     if (hashtags.length >= 5) {
       message.warning('最多只能添加 5 个话题标签');
       return;
     }
-    if (hashtags.includes(inputHashtag.trim())) {
+    if (hashtags.includes(tag)) {
       message.warning('该标签已存在');
       return;
     }
-    setHashtags([...hashtags, inputHashtag.trim()]);
+    if (tag.length > 20) {
+      message.warning('标签长度不能超过 20 个字符');
+      return;
+    }
+    
+    setHashtags([...hashtags, tag]);
     setInputHashtag('');
   };
 
@@ -77,11 +122,41 @@ const Publish: React.FC = () => {
     setHashtags(hashtags.filter((t) => t !== tag));
   };
 
+  // 重置表单
+  const handleReset = () => {
+    Modal.confirm({
+      title: '确认重置',
+      content: '确定要清空所有填写的内容吗？',
+      onOk: () => {
+        form.resetFields();
+        setFileList([]);
+        setHashtags([]);
+        setResult(null);
+        setUploadProgress(0);
+        setUploadStatus('idle');
+        message.success('表单已重置');
+      },
+    });
+  };
+
   // 发布视频
   const handlePublish = async (values: any) => {
+    // 验证视频来源
     if (fileList.length === 0 && !values.videoUrl) {
-      message.error('请上传视频或输入视频 URL');
+      message.error('请上传视频文件或输入视频 URL');
       return;
+    }
+
+    // 定时发布时间验证
+    if (scheduleMode && values.publishTime) {
+      const publishTime = values.publishTime.valueOf();
+      const now = Date.now();
+      const minTime = now + 10 * 60 * 1000; // 至少10分钟后
+      
+      if (publishTime < minTime) {
+        message.error('定时发布时间至少需要在 10 分钟后');
+        return;
+      }
     }
 
     setPublishing(true);
@@ -92,7 +167,7 @@ const Publish: React.FC = () => {
       let isRemoteUrl = !!values.videoUrl;
 
       // 如果有上传的文件，先上传
-      if (fileList.length > 0 && fileList[0].originFileObj) {
+      if (fileList.length > 0 && fileList[0].originFileObj && !values.videoUrl) {
         const videoId = await handleUpload(fileList[0].originFileObj);
         if (!videoId) {
           setPublishing(false);
@@ -123,8 +198,8 @@ const Publish: React.FC = () => {
           options,
           isRemoteUrl,
         });
-        message.success('定时任务已创建');
-        setResult(response.data.data);
+        message.success('定时任务创建成功！');
+        setResult({ ...response.data.data, isScheduled: true });
       } else {
         // 立即发布
         const response = await publishApi.publish({
@@ -141,16 +216,37 @@ const Publish: React.FC = () => {
         setResult(response.data.data);
       }
     } catch (error: any) {
-      message.error(error.response?.data?.error || '发布失败');
+      message.error(error.response?.data?.error || '操作失败，请稍后重试');
+      setResult({ success: false, error: error.response?.data?.error || '未知错误' });
     } finally {
       setPublishing(false);
     }
   };
 
+  // 获取上传状态颜色
+  const getProgressStatus = () => {
+    if (uploadStatus === 'error') return 'exception';
+    if (uploadStatus === 'success') return 'success';
+    return 'active';
+  };
+
+  // 格式化文件大小
+  const formatFileSize = (size: number) => {
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(2)} KB`;
+    if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+    return `${(size / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  };
+
   return (
-    <div>
-      <Title level={3}>视频发布</Title>
-      <Text type="secondary">上传视频并发布到抖音，支持定时发布</Text>
+    <div style={{ width: '100%' }}>
+      <Title level={3}>
+        <VideoCameraOutlined style={{ marginRight: 8 }} />
+        视频发布
+      </Title>
+      <Paragraph type="secondary">
+        上传视频并发布到抖音，支持立即发布和定时发布
+      </Paragraph>
 
       <Divider />
 
@@ -159,207 +255,426 @@ const Publish: React.FC = () => {
         layout="vertical"
         onFinish={handlePublish}
         autoComplete="off"
+        requiredMark="optional"
       >
-        {/* 视频上传 */}
-        <Card title="视频上传" style={{ marginBottom: 24 }}>
-          <Row gutter={24}>
-            <Col span={12}>
-              <Dragger
-                fileList={fileList}
-                onChange={({ fileList }) => setFileList(fileList)}
-                beforeUpload={() => false}
-                accept=".mp4,.mov,.avi"
-                maxCount={1}
-              >
-                <p className="ant-upload-drag-icon">
+        <Row gutter={24}>
+          {/* 左侧：视频上传和发布内容 */}
+          <Col xs={24} lg={16} xxl={18}>
+            {/* 视频上传 */}
+            <Card 
+              title={
+                <Space>
                   <InboxOutlined />
-                </p>
-                <p className="ant-upload-text">点击或拖拽视频文件到此处上传</p>
-                <p className="ant-upload-hint">
-                  支持 MP4、MOV、AVI 格式，文件大小不超过 4GB
-                </p>
-              </Dragger>
-              
-              {uploading && (
-                <Progress percent={uploadProgress} status="active" style={{ marginTop: 16 }} />
-              )}
-            </Col>
-            
-            <Col span={12}>
-              <Form.Item label="或输入视频 URL" name="videoUrl">
-                <Input placeholder="https://example.com/video.mp4" />
-              </Form.Item>
-              <Text type="secondary">
-                如果填写了 URL，将优先使用 URL 而不是上传的文件
-              </Text>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* 发布内容 */}
-        <Card title="发布内容" style={{ marginBottom: 24 }}>
-          <Form.Item
-            label="标题"
-            name="title"
-            rules={[
-              { max: 55, message: '标题最多 55 个字符' },
-            ]}
-          >
-            <Input placeholder="输入视频标题（最多 55 字符）" showCount maxLength={55} />
-          </Form.Item>
-
-          <Form.Item
-            label="描述"
-            name="description"
-            rules={[
-              { max: 300, message: '描述最多 300 个字符' },
-            ]}
-          >
-            <TextArea
-              rows={4}
-              placeholder="输入视频描述（最多 300 字符）"
-              showCount
-              maxLength={300}
-            />
-          </Form.Item>
-
-          <Form.Item label="话题标签 (最多 5 个)">
-            <Space style={{ marginBottom: 8 }}>
-              {hashtags.map((tag) => (
-                <Tag
-                  key={tag}
-                  closable
-                  onClose={() => handleRemoveHashtag(tag)}
-                >
-                  #{tag}
-                </Tag>
-              ))}
-            </Space>
-            <Space>
-              <Input
-                placeholder="输入标签"
-                value={inputHashtag}
-                onChange={(e) => setInputHashtag(e.target.value)}
-                onPressEnter={handleAddHashtag}
-                style={{ width: 150 }}
-              />
-              <Button icon={<PlusOutlined />} onClick={handleAddHashtag}>
-                添加
-              </Button>
-            </Space>
-          </Form.Item>
-
-          <Form.Item label="@提及用户" name="atUsers">
-            <Input placeholder="输入用户 OpenID，多个用逗号分隔" />
-          </Form.Item>
-        </Card>
-
-        {/* 位置信息 */}
-        <Card title="位置信息" style={{ marginBottom: 24 }}>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item label="POI ID" name="poiId">
-                <Input placeholder="地理位置 POI ID" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="位置名称" name="poiName">
-                <Input placeholder="如：武汉光谷" />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* 商业挂载 */}
-        <Card title="商业挂载（可选）" style={{ marginBottom: 24 }}>
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item label="小程序 ID" name="microAppId">
-                <Input placeholder="小程序 ID" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="小程序标题" name="microAppTitle">
-                <Input placeholder="小程序标题" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item label="小程序链接" name="microAppUrl">
-                <Input placeholder="小程序链接" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item label="商品 ID" name="articleId">
-            <Input placeholder="商品 ID（用于挂载商品链接）" />
-          </Form.Item>
-        </Card>
-
-        {/* 发布设置 */}
-        <Card title="发布设置" style={{ marginBottom: 24 }}>
-          <Form.Item>
-            <Space>
-              <Switch
-                checked={scheduleMode}
-                onChange={setScheduleMode}
-              />
-              <Text>{scheduleMode ? '定时发布' : '立即发布'}</Text>
-            </Space>
-          </Form.Item>
-
-          {scheduleMode && (
-            <Form.Item
-              label="发布时间"
-              name="publishTime"
-              rules={[{ required: true, message: '请选择发布时间' }]}
+                  视频上传
+                </Space>
+              }
+              style={{ marginBottom: 24 }}
             >
-              <DatePicker
-                showTime
-                format="YYYY-MM-DD HH:mm"
-                disabledDate={(current) => current && current < dayjs().startOf('day')}
-                style={{ width: '100%' }}
-              />
-            </Form.Item>
-          )}
-        </Card>
+              <Row gutter={[24, 16]}>
+                <Col xs={24} md={14}>
+                  <Dragger
+                    fileList={fileList}
+                    onChange={({ fileList }) => {
+                      setFileList(fileList);
+                      if (fileList.length === 0) {
+                        setUploadStatus('idle');
+                        setUploadProgress(0);
+                      }
+                    }}
+                    beforeUpload={beforeUpload}
+                    accept={ACCEPTED_FORMATS.join(',')}
+                    maxCount={1}
+                    onRemove={() => {
+                      setUploadStatus('idle');
+                      setUploadProgress(0);
+                    }}
+                  >
+                    <p className="ant-upload-drag-icon">
+                      <InboxOutlined />
+                    </p>
+                    <p className="ant-upload-text">点击或拖拽视频文件到此处</p>
+                    <p className="ant-upload-hint">
+                      支持 MP4、MOV、AVI、WebM、MKV 格式
+                      <br />
+                      文件大小不超过 4GB
+                    </p>
+                  </Dragger>
+                  
+                  {/* 上传进度 */}
+                  {(uploading || uploadStatus !== 'idle') && (
+                    <div style={{ marginTop: 16 }}>
+                      <Progress 
+                        percent={uploadProgress} 
+                        status={getProgressStatus()}
+                        format={(percent) => {
+                          if (uploadStatus === 'success') return <CheckCircleOutlined />;
+                          if (uploadStatus === 'error') return <CloseCircleOutlined />;
+                          return `${percent}%`;
+                        }}
+                      />
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {uploadStatus === 'uploading' && '正在上传视频...'}
+                        {uploadStatus === 'success' && '上传完成'}
+                        {uploadStatus === 'error' && '上传失败，请重试'}
+                      </Text>
+                    </div>
+                  )}
 
-        {/* 发布按钮 */}
-        <Form.Item>
-          <Button
-            type="primary"
-            size="large"
-            htmlType="submit"
-            loading={publishing || uploading}
-            block
-          >
-            {scheduleMode ? '创建定时任务' : '立即发布'}
-          </Button>
-        </Form.Item>
-      </Form>
+                  {/* 文件信息 */}
+                  {fileList.length > 0 && fileList[0].size && (
+                    <div style={{ marginTop: 8 }}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        文件大小: {formatFileSize(fileList[0].size)}
+                      </Text>
+                    </div>
+                  )}
+                </Col>
+                
+                <Col xs={24} md={10}>
+                  <Form.Item 
+                    label="或输入视频 URL" 
+                    name="videoUrl"
+                    rules={[
+                      { type: 'url', message: '请输入有效的 URL 地址' },
+                    ]}
+                  >
+                    <Input placeholder="https://example.com/video.mp4" allowClear />
+                  </Form.Item>
+                  <Alert
+                    message="URL 优先"
+                    description="如果同时上传了文件和填写了 URL，将优先使用 URL"
+                    type="info"
+                    showIcon
+                    icon={<InfoCircleOutlined />}
+                    style={{ fontSize: 12 }}
+                  />
+                </Col>
+              </Row>
+            </Card>
 
-      {/* 结果展示 */}
-      {result && (
-        <Alert
-          message={result.success ? '发布成功' : '发布结果'}
-          description={
-            <Space direction="vertical">
-              {result.videoId && <Text>视频 ID: {result.videoId}</Text>}
-              {result.shareUrl && (
-                <Text>
-                  分享链接:{' '}
-                  <a href={result.shareUrl} target="_blank" rel="noopener noreferrer">
-                    {result.shareUrl}
-                  </a>
-                </Text>
+            {/* 发布内容 */}
+            <Card 
+              title="发布内容" 
+              style={{ marginBottom: 24 }}
+            >
+              <Row gutter={24}>
+                <Col xs={24} lg={12}>
+                  <Form.Item
+                    label="标题"
+                    name="title"
+                    rules={[
+                      { max: 55, message: '标题最多 55 个字符' },
+                    ]}
+                    extra="视频标题将显示在作品详情页"
+                  >
+                    <Input 
+                      placeholder="输入视频标题（最多 55 字符）" 
+                      showCount 
+                      maxLength={55}
+                      allowClear
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} lg={12}>
+                  <Form.Item 
+                    label="@提及用户" 
+                    name="atUsers"
+                    extra="多个用户用逗号分隔"
+                  >
+                    <Input placeholder="输入用户 OpenID，多个用逗号分隔" allowClear />
+                  </Form.Item>
+                </Col>
+              </Row>
+
+              <Form.Item
+                label="描述"
+                name="description"
+                rules={[
+                  { max: 300, message: '描述最多 300 个字符' },
+                ]}
+                extra="视频描述支持 @用户 和 #话题"
+              >
+                <TextArea
+                  rows={4}
+                  placeholder="输入视频描述（最多 300 字符）"
+                  showCount
+                  maxLength={300}
+                  allowClear
+                />
+              </Form.Item>
+
+              <Form.Item 
+                label={
+                  <Space>
+                    话题标签
+                    <Text type="secondary" style={{ fontWeight: 'normal' }}>
+                      (最多 5 个)
+                    </Text>
+                  </Space>
+                }
+              >
+                <div style={{ marginBottom: hashtags.length > 0 ? 12 : 0 }}>
+                  <Space wrap>
+                    {hashtags.map((tag) => (
+                      <Tag
+                        key={tag}
+                        closable
+                        onClose={() => handleRemoveHashtag(tag)}
+                        color="blue"
+                        style={{ fontSize: 14, padding: '4px 8px' }}
+                      >
+                        #{tag}
+                      </Tag>
+                    ))}
+                  </Space>
+                </div>
+                <Space.Compact style={{ width: '100%', maxWidth: 400 }}>
+                  <Input
+                    placeholder="输入标签名称"
+                    value={inputHashtag}
+                    onChange={(e) => setInputHashtag(e.target.value)}
+                    onPressEnter={(e) => {
+                      e.preventDefault();
+                      handleAddHashtag();
+                    }}
+                    maxLength={20}
+                    disabled={hashtags.length >= 5}
+                  />
+                  <Button 
+                    icon={<PlusOutlined />} 
+                    onClick={handleAddHashtag}
+                    disabled={hashtags.length >= 5 || !inputHashtag.trim()}
+                  >
+                    添加
+                  </Button>
+                </Space.Compact>
+                {hashtags.length >= 5 && (
+                  <Text type="warning" style={{ display: 'block', marginTop: 4, fontSize: 12 }}>
+                    已达到最大标签数量
+                  </Text>
+                )}
+              </Form.Item>
+            </Card>
+
+            {/* 位置和商业挂载并排 */}
+            <Row gutter={24}>
+              <Col xs={24} lg={12}>
+                {/* 位置信息 */}
+                <Card title="位置信息" style={{ marginBottom: 24 }}>
+                  <Form.Item 
+                    label="POI ID" 
+                    name="poiId"
+                    tooltip="抖音地点 ID，可从抖音 POI 搜索接口获取"
+                  >
+                    <Input placeholder="地理位置 POI ID" allowClear />
+                  </Form.Item>
+                  <Form.Item 
+                    label="位置名称" 
+                    name="poiName"
+                    tooltip="显示在视频中的位置名称"
+                    style={{ marginBottom: 0 }}
+                  >
+                    <Input placeholder="如：武汉光谷" allowClear />
+                  </Form.Item>
+                </Card>
+              </Col>
+              <Col xs={24} lg={12}>
+                {/* 商业挂载 */}
+                <Card 
+                  title={
+                    <Space>
+                      商业挂载
+                      <Tag color="orange">可选</Tag>
+                    </Space>
+                  }
+                  style={{ marginBottom: 24 }}
+                >
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item label="小程序 ID" name="microAppId">
+                        <Input placeholder="小程序 ID" allowClear />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item label="小程序标题" name="microAppTitle">
+                        <Input placeholder="小程序标题" allowClear />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  <Form.Item label="小程序链接" name="microAppUrl" style={{ marginBottom: 0 }}>
+                    <Input placeholder="小程序链接" allowClear />
+                  </Form.Item>
+                </Card>
+              </Col>
+            </Row>
+          </Col>
+
+          {/* 右侧：发布设置和操作 */}
+          <Col xs={24} lg={8} xxl={6}>
+            <div style={{ position: 'sticky', top: 88 }}>
+              {/* 发布设置 */}
+              <Card 
+                title={
+                  <Space>
+                    <ClockCircleOutlined />
+                    发布设置
+                  </Space>
+                }
+                style={{ marginBottom: 24 }}
+              >
+                <Form.Item style={{ marginBottom: 16 }}>
+                  <Space align="center">
+                    <Switch
+                      checked={scheduleMode}
+                      onChange={setScheduleMode}
+                      checkedChildren="定时"
+                      unCheckedChildren="立即"
+                    />
+                    <Text strong>
+                      {scheduleMode ? '定时发布' : '立即发布'}
+                    </Text>
+                  </Space>
+                  {scheduleMode && (
+                    <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
+                      视频将在指定时间自动发布
+                    </Text>
+                  )}
+                </Form.Item>
+
+                {scheduleMode && (
+                  <Form.Item
+                    label="发布时间"
+                    name="publishTime"
+                    rules={[{ required: true, message: '请选择发布时间' }]}
+                    extra="请选择至少 10 分钟后的时间"
+                    style={{ marginBottom: 0 }}
+                  >
+                    <DatePicker
+                      showTime={{ format: 'HH:mm' }}
+                      format="YYYY-MM-DD HH:mm"
+                      disabledDate={(current) => current && current < dayjs().startOf('day')}
+                      disabledTime={(date) => {
+                        if (!date || !dayjs().isSame(date, 'day')) return {};
+                        const now = dayjs();
+                        return {
+                          disabledHours: () => Array.from({ length: now.hour() }, (_, i) => i),
+                          disabledMinutes: (hour) => {
+                            if (hour === now.hour()) {
+                              return Array.from({ length: now.minute() + 10 }, (_, i) => i);
+                            }
+                            return [];
+                          },
+                        };
+                      }}
+                      style={{ width: '100%' }}
+                      placeholder="选择发布时间"
+                    />
+                  </Form.Item>
+                )}
+
+                {/* 商品 ID */}
+                <Divider style={{ margin: '16px 0' }} />
+                <Form.Item 
+                  label="商品 ID" 
+                  name="articleId"
+                  tooltip="用于在视频中挂载商品链接"
+                  style={{ marginBottom: 0 }}
+                >
+                  <Input placeholder="商品 ID（用于挂载商品链接）" allowClear />
+                </Form.Item>
+              </Card>
+
+              {/* 操作按钮 */}
+              <Card style={{ marginBottom: 24 }}>
+                <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                  <Button
+                    type="primary"
+                    size="large"
+                    htmlType="submit"
+                    loading={publishing || uploading}
+                    icon={scheduleMode ? <ClockCircleOutlined /> : <SendOutlined />}
+                    disabled={uploading}
+                    block
+                  >
+                    {uploading 
+                      ? '视频上传中...' 
+                      : publishing 
+                        ? '发布中...' 
+                        : scheduleMode 
+                          ? '创建定时任务' 
+                          : '立即发布'
+                    }
+                  </Button>
+                  <Button 
+                    size="large"
+                    icon={<ReloadOutlined />}
+                    onClick={handleReset}
+                    disabled={publishing || uploading}
+                    block
+                  >
+                    重置表单
+                  </Button>
+                </Space>
+              </Card>
+
+              {/* 结果展示 */}
+              {result && (
+                <Alert
+                  message={
+                    <Space>
+                      {result.success || result.isScheduled ? (
+                        <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                      ) : (
+                        <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+                      )}
+                      {result.isScheduled 
+                        ? '定时任务创建成功' 
+                        : result.success 
+                          ? '发布成功' 
+                          : '发布失败'
+                      }
+                    </Space>
+                  }
+                  description={
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      {result.videoId && (
+                        <Text>
+                          <Text strong>视频 ID: </Text>
+                          <Text code copyable style={{ fontSize: 11 }}>{result.videoId}</Text>
+                        </Text>
+                      )}
+                      {result.shareUrl && (
+                        <Text>
+                          <Text strong>分享链接: </Text>
+                          <a href={result.shareUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12 }}>
+                            打开
+                          </a>
+                        </Text>
+                      )}
+                      {result.taskId && (
+                        <Text>
+                          <Text strong>任务 ID: </Text>
+                          <Text code copyable style={{ fontSize: 11 }}>{result.taskId}</Text>
+                        </Text>
+                      )}
+                      {result.error && (
+                        <Text type="danger" style={{ fontSize: 12 }}>
+                          <Text strong>错误: </Text>
+                          {result.error}
+                        </Text>
+                      )}
+                    </Space>
+                  }
+                  type={result.success || result.isScheduled ? 'success' : 'error'}
+                  showIcon
+                  closable
+                  onClose={() => setResult(null)}
+                />
               )}
-              {result.taskId && <Text>任务 ID: {result.taskId}</Text>}
-              {result.error && <Text type="danger">错误: {result.error}</Text>}
-            </Space>
-          }
-          type={result.success ? 'success' : 'error'}
-          showIcon
-          style={{ marginTop: 24 }}
-        />
-      )}
+            </div>
+          </Col>
+        </Row>
+      </Form>
     </div>
   );
 };

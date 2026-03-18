@@ -188,7 +188,7 @@ export interface ScheduleResult {
 }
 
 /**
- * 抖音配置
+ * 抹音配置
  */
 export interface DouyinConfig {
   clientKey: string;
@@ -197,4 +197,119 @@ export interface DouyinConfig {
   accessToken?: string;
   refreshToken?: string;
   openId?: string;
+}
+
+// ==================== AI 相关类型 ====================
+
+/**
+ * AI 需求分析结果
+ */
+export interface RequirementAnalysis {
+  /** 内容类型 */
+  contentType: 'image' | 'video' | 'auto';
+  /** 主题 */
+  theme: string;
+  /** 风格 */
+  style: string;
+  /** 目标受众 */
+  targetAudience: string;
+  /** 关键卖点 */
+  keyPoints: string[];
+  /** 图片生成 prompt */
+  imagePrompt?: string;
+  /** 视频生成 prompt */
+  videoPrompt?: string;
+  /** 原始用户输入 */
+  originalInput: string;
+}
+
+/**
+ * AI 生成的内容
+ */
+export interface GeneratedContent {
+  /** 内容类型 */
+  type: 'image' | 'video';
+  /** 本地文件路径 */
+  localPath: string;
+  /** 预览 URL */
+  previewUrl?: string;
+  /** 元数据 */
+  metadata?: {
+    width?: number;
+    height?: number;
+    duration?: number;
+    size?: number;
+  };
+  /** 生成任务 ID */
+  taskId?: string;
+}
+
+/**
+ * AI 生成的文案
+ */
+export interface GeneratedCopywriting {
+  /** 标题 (<=55字) */
+  title: string;
+  /** 描述 (<=300字) */
+  description: string;
+  /** 话题标签 (<=5个) */
+  hashtags: string[];
+  /** 建议的位置名称 */
+  suggestedPoiName?: string;
+}
+
+/**
+ * AI 发布配置
+ */
+export interface AIPublishConfig {
+  /** 是否自动发布 */
+  autoPublish?: boolean;
+  /** 定时发布时间 */
+  scheduleTime?: string;
+  /** 内容类型偏好 */
+  contentTypePreference?: 'image' | 'video' | 'auto';
+  /** 覆盖发布选项 */
+  overrides?: Partial<VideoPublishOptions>;
+}
+
+/**
+ * AI 发布结果
+ */
+export interface AIPublishResult {
+  /** 是否成功 */
+  success: boolean;
+  /** 需求分析结果 */
+  analysis?: RequirementAnalysis;
+  /** 生成的内容 */
+  content?: GeneratedContent;
+  /** 生成的文案 */
+  copywriting?: GeneratedCopywriting;
+  /** 发布结果 */
+  publishResult?: PublishResult;
+  /** 错误信息 */
+  error?: string;
+  /** 任务 ID */
+  taskId?: string;
+}
+
+/**
+ * AI 任务状态
+ */
+export interface AITaskStatus {
+  /** 任务 ID */
+  taskId: string;
+  /** 任务状态 */
+  status: 'pending' | 'analyzing' | 'generating' | 'copywriting' | 'publishing' | 'completed' | 'failed';
+  /** 进度百分比 */
+  progress: number;
+  /** 当前步骤描述 */
+  currentStep: string;
+  /** 结果 */
+  result?: AIPublishResult;
+  /** 错误信息 */
+  error?: string;
+  /** 创建时间 */
+  createdAt: number;
+  /** 更新时间 */
+  updatedAt: number;
 }

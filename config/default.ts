@@ -39,10 +39,31 @@ export const CONTENT_CONFIG = {
   MAX_HASHTAG_COUNT: 5,
 };
 
+export const AI_CONFIG = {
+  /** DeepSeek AI 配置 */
+  DEEPSEEK: {
+    BASE_URL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
+    MODEL: 'deepseek-chat',
+    MAX_TOKENS: 4096,
+    TEMPERATURE: 0.7,
+  },
+  /** 豆包 AI 配置 (火山引擎) */
+  DOUBAO: {
+    BASE_URL: process.env.DOUBAO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
+    IMAGE_MODEL: process.env.DOUBAO_ENDPOINT_ID_IMAGE || '',
+    VIDEO_MODEL: process.env.DOUBAO_ENDPOINT_ID_VIDEO || '',
+    /** 任务轮询间隔 (毫秒) */
+    POLL_INTERVAL: 3000,
+    /** 任务超时时间 (毫秒) - 5分钟 */
+    TASK_TIMEOUT: 5 * 60 * 1000,
+  },
+};
+
 export default {
   API_CONFIG,
   UPLOAD_CONFIG,
   RETRY_CONFIG,
   VIDEO_CONFIG,
   CONTENT_CONFIG,
+  AI_CONFIG,
 };

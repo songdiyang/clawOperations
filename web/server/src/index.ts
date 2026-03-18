@@ -1,9 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import { initDatabase } from './database';
 import authRoutes from './routes/auth';
 import uploadRoutes from './routes/upload';
 import publishRoutes from './routes/publish';
+import aiRoutes from './routes/ai';
+import userRoutes from './routes/user';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -17,9 +20,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // API 路由
+app.use('/api/user', userRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/publish', publishRoutes);
+app.use('/api/ai', aiRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {
@@ -35,7 +40,15 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📁 Upload directory: ${path.join(__dirname, '../uploads')}`);
-});
+// 初始化数据库并启动服务器
+initDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`📁 Upload directory: ${path.join(__dirname, '../uploads')}`);
+    });
+  })
+  .catch((error) => {
+    console.error('数据库初始化失败:', error);
+    process.exit(1);
+  });

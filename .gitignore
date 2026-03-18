@@ -16,3 +16,7 @@ coverage/
 # Web 编译产物
 web/server/dist/
 web/client/dist/
+
+# 数据库文件
+web/server/data/
+*.db
