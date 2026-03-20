@@ -15,6 +15,9 @@ export interface User {
   avatar?: string | null;
   role: UserRole;
   is_active: number; // SQLite 使用 0/1 表示布尔值
+  douyin_open_id?: string | null; // 抖音 OpenID，用于 OAuth 登录
+  douyin_nickname?: string | null; // 抖音昵称
+  douyin_avatar?: string | null; // 抖音头像
   created_at: string;
   updated_at: string;
 }
@@ -28,6 +31,9 @@ export interface UserPublicInfo {
   avatar?: string | null;
   role: UserRole;
   is_active: boolean;
+  douyin_open_id?: string | null;
+  douyin_nickname?: string | null;
+  douyin_avatar?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -47,6 +53,24 @@ export interface LoginDTO {
   password: string;
   /** 记住登录状态 */
   remember?: boolean;
+}
+
+/** 抖音 OAuth 登录 DTO */
+export interface DouyinLoginDTO {
+  /** 授权码 */
+  code: string;
+  /** 记住登录状态 */
+  remember?: boolean;
+}
+
+/** 抖音用户信息 */
+export interface DouyinUserInfo {
+  open_id: string;
+  nickname: string;
+  avatar: string;
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
 }
 
 /** 更新用户信息 DTO */
@@ -94,9 +118,12 @@ export function toUserPublicInfo(user: User): UserPublicInfo {
     username: user.username,
     email: user.email,
     phone: user.phone,
-    avatar: user.avatar,
+    avatar: user.avatar || user.douyin_avatar,
     role: user.role,
     is_active: user.is_active === 1,
+    douyin_open_id: user.douyin_open_id,
+    douyin_nickname: user.douyin_nickname,
+    douyin_avatar: user.douyin_avatar,
     created_at: user.created_at,
     updated_at: user.updated_at,
   };

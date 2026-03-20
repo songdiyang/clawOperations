@@ -1,8 +1,49 @@
 import { ClawPublisher } from '../../../../src/index';
 import { DouyinConfig, PublishTaskConfig, VideoPublishOptions } from '../../../../src/models/types';
+import { appConfigService } from './app-config-service';
 
 // 全局 publisher 实例
 let publisher: ClawPublisher | null = null;
+// 全局配置存储
+let currentConfig: DouyinConfig | null = null;
+
+/**
+ * 从环境变量初始化 Publisher
+ * @returns 是否成功加载配置
+ */
+export function initPublisherFromEnv(): boolean {
+  const clientKey = process.env.DOUYIN_CLIENT_KEY;
+  const clientSecret = process.env.DOUYIN_CLIENT_SECRET;
+  const redirectUri = process.env.DOUYIN_REDIRECT_URI;
+  const accessToken = process.env.DOUYIN_ACCESS_TOKEN;
+  const refreshToken = process.env.DOUYIN_REFRESH_TOKEN;
+  const openId = process.env.DOUYIN_OPEN_ID;
+  const expiresAtRaw = process.env.DOUYIN_TOKEN_EXPIRES_AT;
+  const expiresAt = expiresAtRaw ? Number(expiresAtRaw) : undefined;
+
+  if (clientKey && clientSecret && redirectUri && 
+      clientKey !== 'your_douyin_client_key') {
+    const config: DouyinConfig = {
+      clientKey,
+      clientSecret,
+      redirectUri,
+      accessToken: accessToken || undefined,
+      refreshToken: refreshToken || undefined,
+      openId: openId || undefined,
+      expiresAt: Number.isFinite(expiresAt) ? expiresAt : undefined,
+    };
+    setPublisher(config);
+    return true;
+  }
+
+  const storedConfig = appConfigService.getDouyinConfig();
+  if (storedConfig) {
+    setPublisher(storedConfig);
+    return true;
+  }
+
+  return false;
+}
 
 /**
  * 初始化或获取 Publisher 实例
@@ -21,8 +62,16 @@ export function getPublisher(config?: DouyinConfig): ClawPublisher {
  * 设置 Publisher 配置
  */
 export function setPublisher(config: DouyinConfig): ClawPublisher {
+  currentConfig = config;
   publisher = new ClawPublisher(config);
   return publisher;
+}
+
+/**
+ * 获取当前配置
+ */
+export function getPublisherConfig(): DouyinConfig | null {
+  return currentConfig;
 }
 
 /**
@@ -30,6 +79,16 @@ export function setPublisher(config: DouyinConfig): ClawPublisher {
  */
 export function isPublisherInitialized(): boolean {
   return publisher !== null;
+}
+
+/**
+ * 检查是否已配置基本信息
+ */
+export function hasPublisherConfig(): boolean {
+  return currentConfig !== null && 
+    !!currentConfig.clientKey && 
+    !!currentConfig.clientSecret && 
+    !!currentConfig.redirectUri;
 }
 
 /**

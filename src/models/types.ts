@@ -197,6 +197,7 @@ export interface DouyinConfig {
   accessToken?: string;
   refreshToken?: string;
   openId?: string;
+  expiresAt?: number;
 }
 
 // ==================== AI 相关类型 ====================

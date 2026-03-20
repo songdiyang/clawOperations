@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1677ff"/>
+      <stop offset="100%" style="stop-color:#0958d9"/>
+    </linearGradient>
+    <linearGradient id="clawGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff"/>
+      <stop offset="100%" style="stop-color:#e6f4ff"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 圆角矩形背景 -->
+  <rect x="32" y="32" width="448" height="448" rx="96" ry="96" fill="url(#bgGrad)"/>
+  
+  <!-- 爪子图案 - 三个爪尖 -->
+  <g fill="url(#clawGrad)">
+    <!-- 左爪 -->
+    <path d="M140 180 
+             Q130 140, 155 120 
+             Q180 100, 195 130
+             Q200 160, 180 200
+             Q160 220, 140 180Z"/>
+    <!-- 中爪 -->
+    <path d="M240 160 
+             Q235 110, 256 90 
+             Q277 70, 292 100
+             Q300 140, 285 180
+             Q270 200, 240 160Z"/>
+    <!-- 右爪 -->
+    <path d="M340 180 
+             Q360 140, 355 120 
+             Q350 100, 325 110
+             Q300 130, 310 170
+             Q320 210, 340 180Z"/>
+    
+    <!-- 掌心 - 播放按钮造型 -->
+    <circle cx="256" cy="290" r="100" fill="url(#clawGrad)" opacity="0.95"/>
+  </g>
+  
+  <!-- 播放三角 -->
+  <path d="M230 250 L230 330 L300 290 Z" fill="url(#bgGrad)"/>
+  
+  <!-- AI 光环效果 -->
+  <circle cx="256" cy="290" r="115" fill="none" stroke="#ffffff" stroke-width="3" opacity="0.4"/>
+  <circle cx="256" cy="290" r="130" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.2"/>
+  
+  <!-- 底部装饰点 - 代表数据/AI -->
+  <circle cx="180" cy="420" r="12" fill="#ffffff" opacity="0.6"/>
+  <circle cx="256" cy="430" r="12" fill="#ffffff" opacity="0.8"/>
+  <circle cx="332" cy="420" r="12" fill="#ffffff" opacity="0.6"/>
+</svg>

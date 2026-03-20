@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:3001/api';
+// 根据环境自动选择 API 地址
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 // Token 存储键
 const TOKEN_KEY = 'clawops_token';
@@ -90,6 +91,11 @@ export const authApi = {
   getAuthUrl: () => client.get('/auth/url'),
   handleCallback: (code: string) => client.post('/auth/callback', { code }),
   refreshToken: () => client.post('/auth/refresh'),
+  
+  // 抖音 OAuth 登录相关
+  getDouyinLoginUrl: () => client.get('/auth/login/douyin/url'),
+  douyinLoginCallback: (code: string, remember?: boolean) => 
+    client.post('/auth/login/douyin/callback', { code, remember }),
 };
 
 // 上传相关 API
@@ -156,6 +162,10 @@ export const publishApi = {
 
 // AI 创作相关 API
 export const aiApi = {
+  getConfig: () => client.get('/ai/config'),
+
+  setConfig: (config: { deepseekApiKey: string }) =>
+    client.post('/ai/config', config),
   /** 分析用户需求 */
   analyze: (input: string, contentTypePreference?: 'image' | 'video') =>
     client.post('/ai/analyze', { input, contentTypePreference }),

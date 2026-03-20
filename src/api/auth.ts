@@ -11,16 +11,15 @@ export const OAUTH_SCOPES = {
   VIDEO_CREATE: 'video.create',
   VIDEO_UPLOAD: 'video.upload',
   VIDEO_DATA: 'video.data',
-  USER_INFO: 'user.info',
+  USER_INFO: 'user_info',
 } as const;
 
 /**
- * 默认授权作用域
+ * 默认授权作用域 - 只使用 user_info 作为基础权限
+ * 如需视频发布权限，请在抖音开放平台申请 video.create, video.upload 等能力
  */
 const DEFAULT_SCOPES = [
-  OAUTH_SCOPES.VIDEO_CREATE,
-  OAUTH_SCOPES.VIDEO_UPLOAD,
-  OAUTH_SCOPES.VIDEO_DATA,
+  OAUTH_SCOPES.USER_INFO,  // 基础用户信息权限，一般默认开通
 ];
 
 /**

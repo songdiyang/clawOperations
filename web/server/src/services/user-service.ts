@@ -5,6 +5,7 @@ import {
   UserPublicInfo,
   CreateUserDTO,
   UpdateUserDTO,
+  DouyinUserInfo,
   toUserPublicInfo,
 } from '../models/user';
 
@@ -75,6 +76,64 @@ export class UserService {
 
     db.get('users').push(newUser).write();
 
+    return toUserPublicInfo(newUser);
+  }
+
+  /**
+   * 通过抖音 OpenID 查找用户
+   */
+  findByDouyinOpenId(openId: string): User | null {
+    const db = getDatabase();
+    const user = db.get('users').find({ douyin_open_id: openId }).value();
+    return user || null;
+  }
+
+  /**
+   * 通过抖音 OAuth 创建或更新用户
+   */
+  async createOrUpdateFromDouyin(douyinInfo: DouyinUserInfo): Promise<UserPublicInfo> {
+    const db = getDatabase();
+    const existingUser = this.findByDouyinOpenId(douyinInfo.open_id);
+
+    if (existingUser) {
+      // 更新现有用户的抖音信息
+      const updates = {
+        douyin_nickname: douyinInfo.nickname,
+        douyin_avatar: douyinInfo.avatar,
+        updated_at: new Date().toISOString(),
+      };
+      db.get('users').find({ id: existingUser.id }).assign(updates).write();
+      const updatedUser = this.findById(existingUser.id);
+      return toUserPublicInfo(updatedUser!);
+    }
+
+    // 创建新用户
+    const meta = db.get('_meta').value();
+    const newId = meta.nextUserId;
+    db.set('_meta.nextUserId', newId + 1).write();
+
+    const now = new Date().toISOString();
+    // 生成随机用户名和临时密码
+    const randomUsername = `douyin_${douyinInfo.open_id.substring(0, 8)}_${Date.now().toString(36)}`;
+    const randomPassword = await bcrypt.hash(Math.random().toString(36), SALT_ROUNDS);
+
+    const newUser: User = {
+      id: newId,
+      username: randomUsername,
+      email: `${randomUsername}@douyin.temp`, // 临时邮箱
+      password_hash: randomPassword,
+      phone: null,
+      avatar: douyinInfo.avatar,
+      role: 'user',
+      is_active: 1,
+      douyin_open_id: douyinInfo.open_id,
+      douyin_nickname: douyinInfo.nickname,
+      douyin_avatar: douyinInfo.avatar,
+      created_at: now,
+      updated_at: now,
+    };
+
+    db.get('users').push(newUser).write();
     return toUserPublicInfo(newUser);
   }
 

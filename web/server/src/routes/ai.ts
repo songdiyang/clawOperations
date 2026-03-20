@@ -8,6 +8,7 @@ import { RequirementAnalyzer } from '../../../../src/services/ai/requirement-ana
 import { ContentGenerator } from '../../../../src/services/ai/content-generator';
 import { CopywritingGenerator } from '../../../../src/services/ai/copywriting-generator';
 import { AIPublishConfig, AITaskStatus } from '../../../../src/models/types';
+import { appConfigService } from '../services/app-config-service';
 
 const router = Router();
 
@@ -16,13 +17,37 @@ let aiPublishService: AIPublishService | null = null;
 let requirementAnalyzer: RequirementAnalyzer | null = null;
 let contentGenerator: ContentGenerator | null = null;
 let copywritingGenerator: CopywritingGenerator | null = null;
+let cachedDeepseekApiKey: string | null = null;
+
+function resetAIServices() {
+  aiPublishService = null;
+  requirementAnalyzer = null;
+  contentGenerator = null;
+  copywritingGenerator = null;
+  cachedDeepseekApiKey = null;
+}
+
+function getCurrentDeepseekApiKey(): string | undefined {
+  return appConfigService.getAIConfig().deepseekApiKey || process.env.DEEPSEEK_API_KEY || undefined;
+}
+
+function ensureAIServiceCache(): void {
+  const currentKey = getCurrentDeepseekApiKey() || null;
+  if (currentKey !== cachedDeepseekApiKey) {
+    resetAIServices();
+    cachedDeepseekApiKey = currentKey;
+  }
+}
 
 /**
  * 获取或初始化 AI 发布服务
  */
 function getAIPublishService(): AIPublishService {
+  ensureAIServiceCache();
   if (!aiPublishService) {
-    aiPublishService = new AIPublishService();
+    aiPublishService = new AIPublishService({
+      deepseekApiKey: getCurrentDeepseekApiKey(),
+    });
   }
   return aiPublishService;
 }
@@ -31,8 +56,11 @@ function getAIPublishService(): AIPublishService {
  * 获取或初始化需求分析服务
  */
 function getRequirementAnalyzer(): RequirementAnalyzer {
+  ensureAIServiceCache();
   if (!requirementAnalyzer) {
-    requirementAnalyzer = new RequirementAnalyzer();
+    requirementAnalyzer = new RequirementAnalyzer({
+      apiKey: getCurrentDeepseekApiKey(),
+    });
   }
   return requirementAnalyzer;
 }
@@ -51,8 +79,11 @@ function getContentGenerator(): ContentGenerator {
  * 获取或初始化文案生成服务
  */
 function getCopywritingGenerator(): CopywritingGenerator {
+  ensureAIServiceCache();
   if (!copywritingGenerator) {
-    copywritingGenerator = new CopywritingGenerator();
+    copywritingGenerator = new CopywritingGenerator({
+      apiKey: getCurrentDeepseekApiKey(),
+    });
   }
   return copywritingGenerator;
 }
@@ -60,6 +91,42 @@ function getCopywritingGenerator(): CopywritingGenerator {
 /**
  * POST /api/ai/analyze - 分析用户需求
  */
+router.get('/config', (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    data: appConfigService.getAIStatus(),
+  });
+});
+
+router.post('/config', (req: Request, res: Response) => {
+  try {
+    const { deepseekApiKey } = req.body as { deepseekApiKey?: string };
+
+    if (typeof deepseekApiKey !== 'string' || !deepseekApiKey.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: '璇锋彁渚涙湁鏁堢殑 DeepSeek API Key',
+      });
+    }
+
+    appConfigService.setAIConfig({
+      deepseekApiKey: deepseekApiKey.trim(),
+    });
+    resetAIServices();
+
+    res.json({
+      success: true,
+      message: 'AI 閰嶇疆宸蹭繚瀛?',
+      data: appConfigService.getAIStatus(),
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'AI 閰嶇疆淇濆瓨澶辫触',
+    });
+  }
+});
+
 router.post('/analyze', async (req: Request, res: Response) => {
   try {
     const { input, contentTypePreference } = req.body;

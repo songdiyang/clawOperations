@@ -8,6 +8,22 @@ import { User, UserAuthConfig } from '../models/user';
 interface DatabaseSchema {
   users: User[];
   user_auth_configs: UserAuthConfig[];
+  app_config: {
+    douyin: {
+      client_key: string | null;
+      client_secret: string | null;
+      redirect_uri: string | null;
+      access_token: string | null;
+      refresh_token: string | null;
+      open_id: string | null;
+      expires_at: number | null;
+      updated_at: string | null;
+    };
+    ai: {
+      deepseek_api_key: string | null;
+      updated_at: string | null;
+    };
+  };
   _meta: {
     nextUserId: number;
     nextAuthConfigId: number;
@@ -31,6 +47,22 @@ const db = low(adapter);
 db.defaults({
   users: [],
   user_auth_configs: [],
+  app_config: {
+    douyin: {
+      client_key: null,
+      client_secret: null,
+      redirect_uri: null,
+      access_token: null,
+      refresh_token: null,
+      open_id: null,
+      expires_at: null,
+      updated_at: null,
+    },
+    ai: {
+      deepseek_api_key: null,
+      updated_at: null,
+    },
+  },
   _meta: {
     nextUserId: 1,
     nextAuthConfigId: 1,

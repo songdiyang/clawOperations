@@ -1,12 +1,21 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import dotenv from 'dotenv';
 import { initDatabase } from './database';
+import { initPublisherFromEnv } from './services/publisher';
 import authRoutes from './routes/auth';
 import uploadRoutes from './routes/upload';
 import publishRoutes from './routes/publish';
 import aiRoutes from './routes/ai';
 import userRoutes from './routes/user';
+
+[
+  path.resolve(__dirname, '../../../.env'),
+  path.resolve(__dirname, '../.env'),
+].forEach((envPath) => {
+  dotenv.config({ path: envPath, override: false });
+});
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -43,6 +52,14 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 // 初始化数据库并启动服务器
 initDatabase()
   .then(() => {
+    // 从环境变量加载抖音配置（如果已配置）
+    const douyinConfigLoaded = initPublisherFromEnv();
+    if (douyinConfigLoaded) {
+      console.log('✅ 抖音应用配置已从环境变量加载');
+    } else {
+      console.log('⚠️  抖音应用配置未设置，请配置环境变量或通过管理界面配置');
+    }
+    
     app.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
       console.log(`📁 Upload directory: ${path.join(__dirname, '../uploads')}`);

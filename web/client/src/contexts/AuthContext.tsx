@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { userApi, setStoredToken, setStoredUser, clearStoredToken, getStoredToken, getStoredUser } from '../api/client';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { userApi, authApi, setStoredToken, setStoredUser, clearStoredToken, getStoredToken, getStoredUser } from '../api/client';
 
 /** 用户信息类型 */
 export interface User {
@@ -10,6 +10,9 @@ export interface User {
   avatar?: string | null;
   role: string;
   is_active: boolean;
+  douyin_open_id?: string | null;
+  douyin_nickname?: string | null;
+  douyin_avatar?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -24,6 +27,9 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateUser: (user: User) => void;
   checkAuth: () => Promise<boolean>;
+  // 抖音 OAuth 登录相关
+  getDouyinLoginUrl: () => Promise<string>;
+  douyinLogin: (code: string, remember?: boolean) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -136,6 +142,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   }, []);
 
+  /** 获取抖音 OAuth 登录 URL */
+  const getDouyinLoginUrl = useCallback(async (): Promise<string> => {
+    const response = await authApi.getDouyinLoginUrl();
+    if (response.data.success) {
+      return response.data.data.url;
+    } else {
+      throw new Error(response.data.error || '获取授权链接失败');
+    }
+  }, []);
+
+  /** 抖音 OAuth 登录 */
+  const douyinLogin = useCallback(async (code: string, remember?: boolean) => {
+    const response = await authApi.douyinLoginCallback(code, remember);
+    if (response.data.success) {
+      const { user: userData, token } = response.data.data;
+      setStoredToken(token);
+      setStoredUser(userData);
+      setUser(userData);
+    } else {
+      throw new Error(response.data.error || '抖音登录失败');
+    }
+  }, []);
+
   const value: AuthContextType = {
     user,
     isAuthenticated: !!user,
@@ -145,6 +174,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout,
     updateUser,
     checkAuth,
+    getDouyinLoginUrl,
+    douyinLogin,
   };
 
   return (
