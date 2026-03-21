@@ -6,10 +6,13 @@ import {
   DouyinConfig,
   PublishTaskConfig,
   PublishResult,
+  PublishResultExtended,
   ScheduleResult,
+  ScheduleResultExtended,
   VideoPublishOptions,
   UploadProgress,
   TokenInfo,
+  PublishStep,
 } from './models/types';
 import { createLogger } from './utils/logger';
 
@@ -205,8 +208,27 @@ export class ClawPublisher {
    * 列出所有定时任务
    * @returns 任务列表
    */
-  listScheduledTasks(): ScheduleResult[] {
+  listScheduledTasks(): ScheduleResultExtended[] {
     return this.schedulerService.listScheduledTasks();
+  }
+
+  /**
+   * 获取任务详情
+   * @param taskId 任务 ID
+   * @returns 任务详情
+   */
+  getTaskDetail(taskId: string): ScheduleResultExtended | null {
+    return this.schedulerService.getTask(taskId);
+  }
+
+  /**
+   * 重试失败的任务
+   * @param taskId 任务 ID
+   * @param fromStep 从哪个步骤开始重试
+   * @returns 发布结果
+   */
+  async retryTask(taskId: string, fromStep?: PublishStep): Promise<PublishResultExtended> {
+    return this.schedulerService.retryTask(taskId, fromStep);
   }
 
   // ==================== 视频管理 ====================

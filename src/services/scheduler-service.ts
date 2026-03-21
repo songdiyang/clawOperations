@@ -1,12 +1,20 @@
 import cron from 'node-cron';
 import { PublishService } from './publish-service';
-import { PublishTaskConfig, ScheduleResult } from '../models/types';
+import {
+  PublishTaskConfig,
+  ScheduleResult,
+  ScheduleResultExtended,
+  PublishResultExtended,
+  PublishStep,
+  PublishErrorType,
+} from '../models/types';
+import { classifyError } from '../utils/error-classifier';
 import { createLogger } from '../utils/logger';
 
 const logger = createLogger('SchedulerService');
 
 /**
- * 定时任务信息
+ * 定时任务信息（内部使用，包含完整信息）
  */
 interface ScheduledTask {
   id: string;
@@ -14,7 +22,15 @@ interface ScheduledTask {
   scheduledTime: Date;
   cronJob: cron.ScheduledTask;
   status: 'pending' | 'completed' | 'failed' | 'cancelled';
-  result?: unknown;
+  result?: PublishResultExtended;
+  /** 已上传的视频ID（用于重试） */
+  uploadedVideoId?: string;
+  /** 错误类型 */
+  errorType?: PublishErrorType;
+  /** 是否可重试 */
+  retryable?: boolean;
+  /** 重试次数 */
+  retryCount: number;
 }
 
 /**
@@ -34,7 +50,7 @@ export class SchedulerService {
    * @param publishTime 发布时间
    * @returns 任务信息
    */
-  schedulePublish(config: PublishTaskConfig, publishTime: Date): ScheduleResult {
+  schedulePublish(config: PublishTaskConfig, publishTime: Date): ScheduleResultExtended {
     const taskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     // 验证时间
@@ -61,6 +77,7 @@ export class SchedulerService {
       scheduledTime: publishTime,
       cronJob,
       status: 'pending',
+      retryCount: 0,
     };
     this.tasks.set(taskId, task);
 
@@ -68,6 +85,7 @@ export class SchedulerService {
       taskId,
       scheduledTime: publishTime,
       status: 'pending',
+      config,
     };
   }
 
@@ -100,14 +118,18 @@ export class SchedulerService {
    * 列出所有待发布的任务
    * @returns 任务列表
    */
-  listScheduledTasks(): ScheduleResult[] {
-    const results: ScheduleResult[] = [];
+  listScheduledTasks(): ScheduleResultExtended[] {
+    const results: ScheduleResultExtended[] = [];
     
     for (const task of this.tasks.values()) {
       results.push({
         taskId: task.id,
         scheduledTime: task.scheduledTime,
         status: task.status,
+        config: task.config,
+        result: task.result,
+        errorType: task.errorType,
+        retryable: task.retryable,
       });
     }
 
@@ -119,7 +141,7 @@ export class SchedulerService {
    * @param taskId 任务 ID
    * @returns 任务信息
    */
-  getTask(taskId: string): ScheduleResult | null {
+  getTask(taskId: string): ScheduleResultExtended | null {
     const task = this.tasks.get(taskId);
     
     if (!task) {
@@ -130,7 +152,20 @@ export class SchedulerService {
       taskId: task.id,
       scheduledTime: task.scheduledTime,
       status: task.status,
+      config: task.config,
+      result: task.result,
+      errorType: task.errorType,
+      retryable: task.retryable,
     };
+  }
+
+  /**
+   * 获取任务完整详情（内部使用）
+   * @param taskId 任务 ID
+   * @returns 完整任务信息
+   */
+  getTaskDetail(taskId: string): ScheduledTask | null {
+    return this.tasks.get(taskId) || null;
   }
 
   /**
@@ -147,17 +182,127 @@ export class SchedulerService {
     logger.info(`执行定时任务: ${taskId}`);
 
     try {
-      const result = await this.publishService.publishVideo(task.config);
+      const result = await this.publishService.publishVideo(task.config, {
+        uploadedVideoId: task.uploadedVideoId,
+        retryCount: task.retryCount,
+      });
       
       task.status = result.success ? 'completed' : 'failed';
       task.result = result;
       
+      // 保存错误信息用于重试
+      if (!result.success) {
+        task.errorType = result.errorType;
+        task.retryable = result.retryable;
+        task.uploadedVideoId = result.uploadedVideoId;
+      }
+      
       logger.info(`定时任务执行完成: ${taskId}, 状态: ${task.status}`);
     } catch (error) {
-      task.status = 'failed';
-      task.result = error;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const classification = classifyError(error instanceof Error ? error : errorMessage);
       
-      logger.error(`定时任务执行失败: ${taskId}, 错误: ${error instanceof Error ? error.message : String(error)}`);
+      task.status = 'failed';
+      task.result = {
+        success: false,
+        error: errorMessage,
+        errorType: classification.type,
+        retryable: classification.retryable,
+        friendlyMessage: classification.message,
+        suggestion: classification.suggestion,
+        originalParams: task.config,
+      };
+      task.errorType = classification.type;
+      task.retryable = classification.retryable;
+      
+      logger.error(`定时任务执行失败: ${taskId}, 错误: ${errorMessage}`);
+    }
+  }
+
+  /**
+   * 重试失败的任务
+   * @param taskId 任务 ID
+   * @param fromStep 从哪个步骤开始重试
+   * @returns 发布结果
+   */
+  async retryTask(taskId: string, fromStep?: PublishStep): Promise<PublishResultExtended> {
+    const task = this.tasks.get(taskId);
+    
+    if (!task) {
+      return {
+        success: false,
+        error: '任务不存在',
+        errorType: PublishErrorType.UNKNOWN,
+        retryable: false,
+      };
+    }
+
+    if (task.status !== 'failed') {
+      return {
+        success: false,
+        error: '只能重试失败的任务',
+        errorType: PublishErrorType.UNKNOWN,
+        retryable: false,
+      };
+    }
+
+    if (!task.retryable) {
+      return {
+        success: false,
+        error: '该任务不支持重试',
+        errorType: task.errorType,
+        retryable: false,
+        friendlyMessage: task.result?.friendlyMessage,
+        suggestion: task.result?.suggestion,
+      };
+    }
+
+    logger.info(`重试任务: ${taskId}, 从步骤: ${fromStep || 'validate'}`);
+
+    // 更新重试次数
+    task.retryCount++;
+    task.status = 'pending';
+
+    try {
+      const result = await this.publishService.publishVideo(task.config, {
+        fromStep,
+        uploadedVideoId: task.uploadedVideoId,
+        retryCount: task.retryCount,
+      });
+
+      task.status = result.success ? 'completed' : 'failed';
+      task.result = result;
+
+      if (!result.success) {
+        task.errorType = result.errorType;
+        task.retryable = result.retryable;
+        task.uploadedVideoId = result.uploadedVideoId;
+      }
+
+      logger.info(`任务重试完成: ${taskId}, 状态: ${task.status}`);
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const classification = classifyError(error instanceof Error ? error : errorMessage);
+
+      task.status = 'failed';
+      const failedResult: PublishResultExtended = {
+        success: false,
+        error: errorMessage,
+        errorType: classification.type,
+        retryable: classification.retryable,
+        friendlyMessage: classification.message,
+        suggestion: classification.suggestion,
+        originalParams: task.config,
+        retryCount: task.retryCount,
+      };
+      
+      task.result = failedResult;
+      task.errorType = classification.type;
+      task.retryable = classification.retryable;
+
+      logger.error(`任务重试失败: ${taskId}, 错误: ${errorMessage}`);
+      return failedResult;
     }
   }
 

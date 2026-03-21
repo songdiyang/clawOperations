@@ -1,5 +1,5 @@
 import { ClawPublisher } from '../../../../src/index';
-import { DouyinConfig, PublishTaskConfig, VideoPublishOptions } from '../../../../src/models/types';
+import { DouyinConfig, PublishTaskConfig, VideoPublishOptions, PublishStep, PublishResultExtended, ScheduleResultExtended } from '../../../../src/models/types';
 import { appConfigService } from './app-config-service';
 
 // 全局 publisher 实例
@@ -191,4 +191,23 @@ export async function uploadFromUrl(videoUrl: string) {
 export async function refreshToken() {
   const pub = getPublisher();
   return pub.refreshToken();
+}
+
+/**
+ * 获取任务详情
+ */
+export function getTaskDetail(taskId: string): ScheduleResultExtended | null {
+  const pub = getPublisher();
+  return pub.getTaskDetail(taskId);
+}
+
+/**
+ * 重试失败的任务
+ */
+export async function retryTask(
+  taskId: string,
+  fromStep?: PublishStep
+): Promise<PublishResultExtended> {
+  const pub = getPublisher();
+  return pub.retryTask(taskId, fromStep);
 }

@@ -13,6 +13,7 @@
 - [web/server/src/database/index.ts](file://web/server/src/database/index.ts)
 - [web/client/src/contexts/AuthContext.tsx](file://web/client/src/contexts/AuthContext.tsx)
 - [web/client/src/pages/Login.tsx](file://web/client/src/pages/Login.tsx)
+- [web/client/src/pages/AuthConfig.tsx](file://web/client/src/pages/AuthConfig.tsx)
 - [web/client/src/api/client.ts](file://web/client/src/api/client.ts)
 - [tests/unit/auth.test.ts](file://tests/unit/auth.test.ts)
 - [package.json](file://package.json)
@@ -34,6 +35,8 @@
 
 ClawOperations是一个基于JWT的用户认证系统，专为抖音（TikTok）营销账号自动化运营而设计。该系统提供了完整的用户认证、授权管理和会话控制功能，支持用户注册、登录、登出以及基于角色的访问控制。
 
+**重大改进**：系统已修复AuthConfig中的编码问题，增强了用户管理功能，并改进了整体认证流程，提供了更稳定和可靠的认证体验。
+
 系统采用前后端分离架构，前端使用React + Ant Design构建用户界面，后端基于Express.js提供RESTful API服务，数据库使用LowDB进行本地数据持久化存储。
 
 ## 项目结构
@@ -47,28 +50,34 @@ A[React应用]
 B[AuthContext认证上下文]
 C[页面组件]
 D[API客户端]
+E[AuthConfig认证配置页面]
 end
 subgraph "后端服务 (web/server)"
-E[Express服务器]
-F[认证中间件]
-G[用户服务]
-H[数据库层]
-I[路由控制器]
+F[Express服务器]
+G[认证中间件]
+H[用户服务]
+I[数据库层]
+J[路由控制器]
+K[用户认证配置服务]
 end
 subgraph "核心库 (src)"
-J[ClawPublisher主类]
-K[OAuth认证模块]
-L[发布服务]
-M[调度服务]
+L[ClawPublisher主类]
+M[OAuth认证模块]
+N[发布服务]
+O[调度服务]
 end
 A --> D
-D --> E
-E --> F
-E --> G
-G --> H
+D --> F
+F --> G
+F --> H
+H --> I
+H --> K
+K --> I
+J --> G
 J --> K
-J --> L
-J --> M
+L --> M
+L --> N
+L --> O
 ```
 
 **图表来源**
@@ -100,10 +109,15 @@ J --> M
 - **UserService**: 提供用户注册、登录、密码管理和用户信息更新功能
 - **UserAuthConfigService**: 管理用户的抖音认证配置和令牌存储
 
+#### 4. 认证配置管理
+- **AuthConfig页面**: 提供完整的OAuth认证配置界面
+- **配置状态管理**: 实时显示认证状态和Token有效期
+- **授权流程**: 支持完整的OAuth授权流程
+
 **章节来源**
 - [web/server/src/utils/auth.ts:1-91](file://web/server/src/utils/auth.ts#L1-L91)
 - [web/server/src/middleware/auth.ts:1-93](file://web/server/src/middleware/auth.ts#L1-L93)
-- [web/server/src/services/user-service.ts:1-240](file://web/server/src/services/user-service.ts#L1-L240)
+- [web/server/src/services/user-service.ts:1-299](file://web/server/src/services/user-service.ts#L1-L299)
 - [web/server/src/services/user-auth-config-service.ts:1-167](file://web/server/src/services/user-auth-config-service.ts#L1-L167)
 
 ## 架构概览
@@ -116,40 +130,47 @@ subgraph "表现层 (Presentation Layer)"
 UI[React前端界面]
 AC[认证上下文]
 LC[登录组件]
+ACC[AuthConfig认证配置]
 end
 subgraph "应用层 (Application Layer)"
 RM[路由管理器]
 AM[认证中间件]
 UM[用户管理器]
+UACS[用户认证配置管理]
 end
 subgraph "领域层 (Domain Layer)"
 US[用户服务]
 UACS[用户认证配置服务]
 PS[发布服务]
+AS[应用配置服务]
 end
 subgraph "基础设施层 (Infrastructure Layer)"
 DB[(LowDB数据库)]
 JC[JWT处理器]
 BC[Bcrypt加密]
+OC[OAuth客户端]
 end
 UI --> AC
 AC --> LC
-LC --> RM
+LC --> ACC
+ACC --> RM
 RM --> AM
 AM --> UM
 UM --> US
 US --> UACS
 US --> DB
+UACS --> AS
+AS --> DB
 AM --> JC
 US --> BC
-UACS --> DB
+UACS --> OC
 ```
 
 **图表来源**
 - [web/client/src/contexts/AuthContext.tsx:1-165](file://web/client/src/contexts/AuthContext.tsx#L1-L165)
-- [web/server/src/routes/auth.ts:1-167](file://web/server/src/routes/auth.ts#L1-L167)
+- [web/server/src/routes/auth.ts:1-373](file://web/server/src/routes/auth.ts#L1-L373)
 - [web/server/src/middleware/auth.ts:1-93](file://web/server/src/middleware/auth.ts#L1-L93)
-- [web/server/src/services/user-service.ts:1-240](file://web/server/src/services/user-service.ts#L1-L240)
+- [web/server/src/services/user-service.ts:1-299](file://web/server/src/services/user-service.ts#L1-L299)
 
 ## 详细组件分析
 
@@ -211,9 +232,28 @@ L-->>U : 显示登录成功消息
 - [web/client/src/pages/Login.tsx:31-45](file://web/client/src/pages/Login.tsx#L31-L45)
 - [web/client/src/contexts/AuthContext.tsx:74-84](file://web/client/src/contexts/AuthContext.tsx#L74-L84)
 
+#### AuthConfig认证配置页面
+**新增** AuthConfig页面提供了完整的OAuth认证配置界面，支持实时状态监控和授权流程：
+
+```mermaid
+flowchart TD
+Start([开始配置]) --> SaveConfig["保存应用配置"]
+SaveConfig --> GetAuthUrl["获取授权链接"]
+GetAuthUrl --> OpenBrowser["在新窗口打开授权页面"]
+OpenBrowser --> EnterCode["用户输入授权码"]
+EnterCode --> HandleCallback["处理授权回调"]
+HandleCallback --> UpdateToken["更新Token信息"]
+UpdateToken --> RefreshToken["可选：刷新Token"]
+RefreshToken --> Complete([配置完成])
+```
+
+**图表来源**
+- [web/client/src/pages/AuthConfig.tsx:45-135](file://web/client/src/pages/AuthConfig.tsx#L45-L135)
+
 **章节来源**
 - [web/client/src/contexts/AuthContext.tsx:1-165](file://web/client/src/contexts/AuthContext.tsx#L1-L165)
 - [web/client/src/pages/Login.tsx:1-145](file://web/client/src/pages/Login.tsx#L1-L145)
+- [web/client/src/pages/AuthConfig.tsx:1-491](file://web/client/src/pages/AuthConfig.tsx#L1-L491)
 
 ### 后端认证服务
 
@@ -273,10 +313,38 @@ UserAuthConfigService --> UserAuthConfig : manages
 **图表来源**
 - [web/server/src/services/user-auth-config-service.ts:8-167](file://web/server/src/services/user-auth-config-service.ts#L8-L167)
 
+#### 应用配置服务
+**新增** AppConfigService提供了全局应用配置管理，支持向后兼容：
+
+```mermaid
+classDiagram
+class AppConfigService {
++getDouyinConfig() DouyinConfig
++setDouyinConfig(config) DouyinConfig
++getAIConfig() AIConfig
++setAIConfig(config) AIConfig
++getAIStatus() Object
+}
+class DouyinConfig {
++string clientKey
++string clientSecret
++string redirectUri
++string accessToken
++string refreshToken
++string openId
++number expiresAt
+}
+AppConfigService --> DouyinConfig : manages
+```
+
+**图表来源**
+- [web/server/src/services/app-config-service.ts:8-91](file://web/server/src/services/app-config-service.ts#L8-L91)
+
 **章节来源**
 - [web/server/src/utils/auth.ts:1-91](file://web/server/src/utils/auth.ts#L1-L91)
 - [web/server/src/middleware/auth.ts:1-93](file://web/server/src/middleware/auth.ts#L1-L93)
 - [web/server/src/services/user-auth-config-service.ts:1-167](file://web/server/src/services/user-auth-config-service.ts#L1-L167)
+- [web/server/src/services/app-config-service.ts:1-91](file://web/server/src/services/app-config-service.ts#L1-L91)
 
 ### 数据模型设计
 
@@ -309,16 +377,20 @@ number expires_at
 string created_at
 string updated_at
 }
+APPCONFIG {
+object douyin
+object ai
+}
 USERS ||--o{ USER_AUTH_CONFIGS : has
 ```
 
 **图表来源**
-- [web/server/src/models/user.ts:8-104](file://web/server/src/models/user.ts#L8-L104)
-- [web/server/src/database/index.ts:8-15](file://web/server/src/database/index.ts#L8-L15)
+- [web/server/src/models/user.ts:8-131](file://web/server/src/models/user.ts#L8-L131)
+- [web/server/src/database/index.ts:8-126](file://web/server/src/database/index.ts#L8-L126)
 
 **章节来源**
-- [web/server/src/models/user.ts:1-104](file://web/server/src/models/user.ts#L1-L104)
-- [web/server/src/database/index.ts:1-86](file://web/server/src/database/index.ts#L1-L86)
+- [web/server/src/models/user.ts:1-131](file://web/server/src/models/user.ts#L1-L131)
+- [web/server/src/database/index.ts:1-126](file://web/server/src/database/index.ts#L1-L126)
 
 ## 依赖关系分析
 
@@ -331,6 +403,7 @@ AX[axios]
 JW[jsonwebtoken]
 BC[bcryptjs]
 LO[lowdb]
+DO[dotenv]
 end
 subgraph "内部模块"
 AC[AuthContext]
@@ -338,22 +411,24 @@ AU[AuthUtils]
 UM[UserModel]
 US[UserService]
 UC[UserConfigService]
+ACS[AppConfigService]
 end
 AC --> AX
 AU --> JW
 US --> BC
 US --> LO
 UC --> LO
+ACS --> LO
 UM --> US
 ```
 
 **图表来源**
 - [package.json:18-33](file://package.json#L18-L33)
-- [web/client/src/api/client.ts:1-238](file://web/client/src/api/client.ts#L1-L238)
+- [web/client/src/api/client.ts:1-430](file://web/client/src/api/client.ts#L1-L430)
 
 **章节来源**
 - [package.json:1-38](file://package.json#L1-L38)
-- [web/client/src/api/client.ts:1-238](file://web/client/src/api/client.ts#L1-L238)
+- [web/client/src/api/client.ts:1-430](file://web/client/src/api/client.ts#L1-L430)
 
 ## 性能考虑
 
@@ -371,6 +446,7 @@ UM --> US
 - **状态管理**: 使用React Context进行全局状态管理，避免不必要的组件重渲染
 - **请求缓存**: 缓存API响应数据，减少网络请求
 - **懒加载**: 实现组件懒加载，提升应用启动速度
+- **实时状态更新**: AuthConfig页面支持实时状态监控，提升用户体验
 
 ## 故障排除指南
 
@@ -396,6 +472,13 @@ UM --> US
 - 验证用户角色权限
 - 检查路由中间件配置
 - 确认管理员账户状态
+
+#### 4. OAuth认证失败
+**症状**: AuthConfig页面显示认证状态异常
+**解决方案**:
+- 检查应用配置是否正确保存
+- 验证授权码是否有效
+- 确认Token刷新机制正常工作
 
 **章节来源**
 - [web/server/src/middleware/auth.ts:30-47](file://web/server/src/middleware/auth.ts#L30-L47)
@@ -424,13 +507,20 @@ DatabaseTest --> End([测试完成])
 
 ## 结论
 
-ClawOperations的JWT用户认证系统设计合理，实现了完整的用户身份验证和授权功能。系统具有以下特点：
+ClawOperations的JWT用户认证系统经过重大改进，设计更加合理，实现了完整的用户身份验证和授权功能。系统具有以下特点：
+
+### 重大改进
+- **AuthConfig编码问题修复**: 修复了认证配置中的编码问题，提升了系统的稳定性
+- **增强的用户管理功能**: 提供了更完善的用户注册、登录和密码管理功能
+- **改进的整体认证流程**: 优化了OAuth认证流程，提供了更好的用户体验
+- **实时状态监控**: AuthConfig页面支持实时状态监控和Token有效期显示
 
 ### 优势
 - **安全性**: 采用JWT令牌机制，支持安全的用户认证
 - **可扩展性**: 模块化设计，易于添加新功能
 - **用户体验**: 提供流畅的认证流程和错误处理
 - **代码质量**: 完善的测试覆盖和文档说明
+- **向后兼容**: 保持与现有系统的兼容性
 
 ### 改进建议
 - **令牌存储**: 考虑使用HttpOnly Cookie存储JWT令牌
@@ -438,4 +528,4 @@ ClawOperations的JWT用户认证系统设计合理，实现了完整的用户身
 - **监控日志**: 增强认证相关的日志记录
 - **国际化**: 支持多语言错误消息
 
-该系统为抖音营销账号的自动化运营提供了坚实的技术基础，能够满足专业用户的认证需求，并为未来的功能扩展奠定了良好的技术基础。
+该系统为抖音营销账号的自动化运营提供了坚实的技术基础，经过重大改进后更加稳定可靠，能够满足专业用户的认证需求，并为未来的功能扩展奠定了良好的技术基础。

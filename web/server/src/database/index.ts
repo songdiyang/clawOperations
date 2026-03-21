@@ -3,11 +3,16 @@ import FileSync from 'lowdb/adapters/FileSync';
 import path from 'path';
 import fs from 'fs';
 import { User, UserAuthConfig } from '../models/user';
+import { CreationTask, CreationTemplate } from '../../../../src/models/types';
 
 // 数据库类型定义
 interface DatabaseSchema {
   users: User[];
   user_auth_configs: UserAuthConfig[];
+  // 创作相关
+  creation_drafts: CreationTask[];
+  creation_history: CreationTask[];
+  creation_templates: CreationTemplate[];
   app_config: {
     douyin: {
       client_key: string | null;
@@ -47,6 +52,9 @@ const db = low(adapter);
 db.defaults({
   users: [],
   user_auth_configs: [],
+  creation_drafts: [],
+  creation_history: [],
+  creation_templates: [],
   app_config: {
     douyin: {
       client_key: null,

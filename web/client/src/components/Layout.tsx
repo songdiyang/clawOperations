@@ -96,7 +96,7 @@ const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick, 
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      {/* 顶部导航 */}
+      {/* 顶部导航 - 紧凑版 */}
       <Header
         style={{
           position: 'fixed',
@@ -104,24 +104,24 @@ const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick, 
           left: 0,
           right: 0,
           zIndex: 100,
-          height: 64,
-          padding: '0 24px',
+          height: 48,
+          padding: '0 16px',
           background: '#fff',
-          borderBottom: '1px solid #e5e7eb',
+          borderBottom: '1px solid #ebeef2',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
         }}
       >
         {/* 左侧：Logo + 折叠按钮 */}
-        <Space size={16}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Space size={12}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <img 
               src="/logo.svg" 
               alt="ClawOperations" 
-              style={{ width: 36, height: 36, borderRadius: 8 }}
+              style={{ width: 28, height: 28, borderRadius: 6 }}
             />
-            <Text strong style={{ fontSize: 18, color: '#1f2937' }}>
+            <Text strong style={{ fontSize: 15, color: '#1f2937' }}>
               ClawOperations
             </Text>
           </div>
@@ -130,50 +130,51 @@ const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick, 
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed(!collapsed)}
-            style={{ fontSize: 16, width: 40, height: 40 }}
+            style={{ fontSize: 14, width: 32, height: 32 }}
           />
           
           {isDevMode && (
-            <Tag color="orange" icon={<ExperimentOutlined />}>
+            <Tag color="orange" icon={<ExperimentOutlined />} style={{ fontSize: 11, padding: '0 6px', lineHeight: '20px' }}>
               开发模式
             </Tag>
           )}
         </Space>
 
         {/* 右侧：功能按钮 + 用户信息 */}
-        <Space size={8}>
+        <Space size={4}>
           <Tooltip title="帮助文档">
-            <Button type="text" icon={<QuestionCircleOutlined />} style={{ color: '#6b7280' }} />
+            <Button type="text" size="small" icon={<QuestionCircleOutlined />} style={{ color: '#6b7280' }} />
           </Tooltip>
           <Tooltip title="消息通知">
-            <Button type="text" icon={<BellOutlined />} style={{ color: '#6b7280' }} />
+            <Button type="text" size="small" icon={<BellOutlined />} style={{ color: '#6b7280' }} />
           </Tooltip>
           
-          <div style={{ width: 1, height: 24, background: '#e5e7eb', margin: '0 8px' }} />
+          <div style={{ width: 1, height: 20, background: '#ebeef2', margin: '0 6px' }} />
           
           <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" trigger={['click']}>
             <Button 
               type="text" 
+              size="small"
               style={{ 
                 height: 'auto', 
-                padding: '6px 12px',
-                borderRadius: 8,
+                padding: '4px 8px',
+                borderRadius: 6,
               }}
             >
-              <Space size={8}>
+              <Space size={6}>
                 <Avatar 
-                  size={32}
+                  size={26}
                   src={avatarUrl}
                   icon={!avatarUrl && <UserOutlined />}
                   style={{ 
                     backgroundColor: avatarUrl ? 'transparent' : '#1677ff',
                   }}
                 />
-                <div style={{ textAlign: 'left', lineHeight: 1.3 }}>
-                  <div style={{ fontSize: 14, fontWeight: 500, color: '#1f2937' }}>
+                <div style={{ textAlign: 'left', lineHeight: 1.2 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: '#1f2937' }}>
                     {displayName}
                   </div>
-                  <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                  <div style={{ fontSize: 11, color: '#9ca3af' }}>
                     {isDevMode ? '调试账户' : '已登录'}
                   </div>
                 </div>
@@ -184,24 +185,24 @@ const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick, 
       </Header>
 
       {/* 主体区域 */}
-      <Layout style={{ marginTop: 64 }}>
-        {/* 侧边栏 */}
+      <Layout style={{ marginTop: 48 }}>
+        {/* 侧边栏 - 紧凑版 */}
         <Sider
-          width={220}
-          collapsedWidth={80}
+          width={180}
+          collapsedWidth={56}
           collapsed={collapsed}
           style={{
             position: 'fixed',
             left: 0,
-            top: 64,
+            top: 48,
             bottom: 0,
             background: '#fff',
-            borderRight: '1px solid #e5e7eb',
+            borderRight: '1px solid #ebeef2',
             overflow: 'auto',
             zIndex: 99,
           }}
         >
-          <div style={{ padding: '16px 0' }}>
+          <div style={{ padding: '8px 0' }}>
             <Menu
               mode="inline"
               selectedKeys={[currentPage]}
@@ -210,11 +211,12 @@ const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick, 
               style={{ 
                 border: 'none',
                 background: 'transparent',
+                fontSize: 13,
               }}
             />
           </div>
           
-          {/* 侧边栏底部 */}
+          {/* 侧边栏底部 - 简化版 */}
           {!collapsed && (
             <div
               style={{
@@ -222,48 +224,44 @@ const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick, 
                 bottom: 0,
                 left: 0,
                 right: 0,
-                padding: '16px',
+                padding: '12px',
                 borderTop: '1px solid #f0f0f0',
               }}
             >
               <div
                 style={{
-                  padding: '12px',
-                  background: '#f5f7fa',
-                  borderRadius: 8,
-                  fontSize: 12,
+                  padding: '8px 10px',
+                  background: '#f8f9fb',
+                  borderRadius: 6,
+                  fontSize: 11,
                   color: '#6b7280',
                 }}
               >
-                <div style={{ fontWeight: 500, marginBottom: 4 }}>
+                <div style={{ fontWeight: 500, marginBottom: 2, fontSize: 12 }}>
                   快捷帮助
                 </div>
-                <div>
-                  AI 创作: 输入需求自动生成
-                </div>
-                <div>
-                  视频发布: 上传视频到抖音
-                </div>
+                <div>AI 创作: 输入需求自动生成</div>
+                <div>视频发布: 上传视频到抖音</div>
               </div>
             </div>
           )}
         </Sider>
 
-        {/* 内容区域 */}
+        {/* 内容区域 - 紧凑版 */}
         <Content
           style={{
-            marginLeft: collapsed ? 80 : 220,
-            minHeight: 'calc(100vh - 64px)',
-            background: '#f5f7fa',
-            padding: 24,
+            marginLeft: collapsed ? 56 : 180,
+            minHeight: 'calc(100vh - 48px)',
+            background: '#f8f9fb',
+            padding: 16,
             transition: 'margin-left 0.2s ease',
           }}
         >
-          {/* 页面头部 */}
-          <div style={{ marginBottom: 24 }}>
+          {/* 页面头部 - 简化版 */}
+          <div style={{ marginBottom: 16 }}>
             {/* 面包屑 */}
-            <div style={{ marginBottom: 8 }}>
-              <Space size={4} style={{ fontSize: 13, color: '#9ca3af' }}>
+            <div style={{ marginBottom: 4 }}>
+              <Space size={4} style={{ fontSize: 12, color: '#9ca3af' }}>
                 <HomeOutlined />
                 <span>/</span>
                 <span style={{ color: '#6b7280' }}>{pageTitles[currentPage] || currentPage}</span>
@@ -272,7 +270,7 @@ const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick, 
             {/* 页面标题 */}
             <h1 style={{ 
               margin: 0, 
-              fontSize: 24, 
+              fontSize: 18, 
               fontWeight: 600, 
               color: '#1f2937',
             }}>
@@ -284,10 +282,10 @@ const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick, 
           <div
             style={{
               background: '#fff',
-              borderRadius: 12,
-              padding: 24,
-              minHeight: 'calc(100vh - 200px)',
-              border: '1px solid #e5e7eb',
+              borderRadius: 8,
+              padding: 16,
+              minHeight: 'calc(100vh - 140px)',
+              border: '1px solid #ebeef2',
             }}
           >
             {children}

@@ -117,6 +117,47 @@ export const uploadApi = {
     });
   },
   uploadFromUrl: (url: string) => client.post('/upload/url', { url }),
+  
+  // 图片上传
+  uploadImage: (file: File, onProgress?: (progress: number) => void) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    return client.post('/upload/image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onProgress(percent);
+        }
+      },
+    });
+  },
+  
+  // 批量图片上传
+  uploadImages: (files: File[], onProgress?: (progress: number) => void) => {
+    const formData = new FormData();
+    files.forEach(file => {
+      formData.append('images', file);
+    });
+    
+    return client.post('/upload/images', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onProgress(percent);
+        }
+      },
+    });
+  },
+  
+  // 删除图片
+  deleteImage: (filename: string) => client.delete(`/upload/image/${filename}`),
 };
 
 // 发布相关 API
@@ -158,6 +199,102 @@ export const publishApi = {
   
   getTasks: () => client.get('/publish/tasks'),
   cancelTask: (taskId: string) => client.delete(`/publish/tasks/${taskId}`),
+  
+  // ==================== 重试相关 ====================
+  
+  /** 获取任务详情（包含错误信息） */
+  getTaskDetail: (taskId: string) => client.get(`/publish/tasks/${taskId}`),
+  
+  /** 重试指定任务 */
+  retryTask: (taskId: string, fromStep?: 'validate' | 'upload' | 'publish') => 
+    client.post(`/publish/tasks/${taskId}/retry`, { fromStep }),
+  
+  /** 直接重试发布（不依赖任务ID） */
+  retry: (data: {
+    originalParams: {
+      videoPath: string;
+      options?: {
+        title?: string;
+        description?: string;
+        hashtags?: string[];
+        atUsers?: string[];
+        poiId?: string;
+        poiName?: string;
+        microAppId?: string;
+        microAppTitle?: string;
+        microAppUrl?: string;
+        articleId?: string;
+      };
+      isRemoteUrl?: boolean;
+    };
+    fromStep?: 'validate' | 'upload' | 'publish';
+    uploadedVideoId?: string;
+  }) => client.post('/publish/retry', data),
+  
+  // ==================== 图文发布 ====================
+  
+  /** 立即发布图文 */
+  publishImageText: (data: {
+    images: Array<{
+      id: string;
+      url: string;
+      uploadedUrl?: string;
+      title?: string;
+      description?: string;
+      textStyle?: {
+        fontFamily?: string;
+        fontSize?: number;
+        fontColor?: string;
+        backgroundColor?: string;
+        position?: 'top' | 'bottom' | 'center';
+        textAlign?: 'left' | 'center' | 'right';
+      };
+      order: number;
+    }>;
+    options?: {
+      title?: string;
+      description?: string;
+      hashtags?: string[];
+      atUsers?: string[];
+      poiId?: string;
+      poiName?: string;
+    };
+  }) => client.post('/publish/image-text', data),
+  
+  /** 定时发布图文 */
+  scheduleImageText: (data: {
+    images: Array<{
+      id: string;
+      url: string;
+      uploadedUrl?: string;
+      title?: string;
+      description?: string;
+      textStyle?: {
+        fontFamily?: string;
+        fontSize?: number;
+        fontColor?: string;
+        backgroundColor?: string;
+        position?: 'top' | 'bottom' | 'center';
+        textAlign?: 'left' | 'center' | 'right';
+      };
+      order: number;
+    }>;
+    publishTime: string;
+    options?: {
+      title?: string;
+      description?: string;
+      hashtags?: string[];
+      atUsers?: string[];
+      poiId?: string;
+      poiName?: string;
+    };
+  }) => client.post('/publish/image-text/schedule', data),
+  
+  /** 获取图文发布任务列表 */
+  getImageTextTasks: () => client.get('/publish/image-text/tasks'),
+  
+  /** 取消图文发布任务 */
+  cancelImageTextTask: (taskId: string) => client.delete(`/publish/image-text/tasks/${taskId}`),
 };
 
 // AI 创作相关 API
@@ -201,6 +338,95 @@ export const aiApi = {
   
   /** 获取所有任务 */
   getTasks: () => client.get('/ai/tasks'),
+
+  // ==================== 草稿管理 ====================
+  
+  /** 保存草稿 */
+  saveDraft: (draft: {
+    id?: string;
+    requirement: string;
+    contentTypePreference?: 'image' | 'video' | 'auto';
+    analysis?: any;
+    content?: any;
+    copywriting?: any;
+    lastCompletedStep?: number;
+  }) => client.post('/ai/drafts', draft),
+  
+  /** 获取草稿列表 */
+  getDrafts: () => client.get('/ai/drafts'),
+  
+  /** 获取单个草稿 */
+  getDraft: (id: string) => client.get(`/ai/drafts/${id}`),
+  
+  /** 更新草稿 */
+  updateDraft: (id: string, data: any) => client.put(`/ai/drafts/${id}`, data),
+  
+  /** 删除草稿 */
+  deleteDraft: (id: string) => client.delete(`/ai/drafts/${id}`),
+  
+  /** 恢复草稿继续创作 */
+  resumeDraft: (id: string) => client.post(`/ai/drafts/${id}/resume`),
+
+  // ==================== 历史记录 ====================
+  
+  /** 获取历史记录 */
+  getHistory: (params?: { limit?: number; offset?: number }) =>
+    client.get('/ai/history', { params }),
+  
+  /** 获取单条历史记录详情 */
+  getHistoryDetail: (id: string) => client.get(`/ai/history/${id}`),
+
+  // ==================== 模板管理 ====================
+  
+  /** 创建模板 */
+  createTemplate: (template: {
+    name: string;
+    description?: string;
+    requirement: string;
+    contentTypePreference?: 'image' | 'video' | 'auto';
+    tags?: string[];
+  }) => client.post('/ai/templates', template),
+  
+  /** 获取模板列表 */
+  getTemplates: () => client.get('/ai/templates'),
+  
+  /** 获取单个模板 */
+  getTemplate: (id: string) => client.get(`/ai/templates/${id}`),
+  
+  /** 删除模板 */
+  deleteTemplate: (id: string) => client.delete(`/ai/templates/${id}`),
+  
+  /** 使用模板（增加使用计数） */
+  useTemplate: (id: string) => client.post(`/ai/templates/${id}/use`),
+
+  // ==================== 工作流 ====================
+  
+  /** 开始新的创作流程 */
+  startWorkflow: (data: {
+    requirement?: string;
+    contentTypePreference?: 'image' | 'video' | 'auto';
+    templateId?: string;
+  }) => client.post('/ai/workflow/start', data),
+  
+  /** 执行单步操作 */
+  executeStep: (taskId: string, step: 'analyze' | 'generate' | 'copywriting' | 'preview' | 'complete') =>
+    client.post('/ai/workflow/step', { taskId, step }),
+  
+  /** 获取下一步建议 */
+  getNextAction: (taskId: string) => client.get(`/ai/workflow/${taskId}/next-action`),
+
+  // ==================== 内容质量校验 ====================
+  
+  /** 内容质量校验 */
+  qualityCheck: (input: {
+    title: string;
+    description: string;
+    hashtags?: string[];
+    contentType?: 'image' | 'video';
+    platform?: 'douyin' | 'tiktok';
+    brandName?: string;
+    scheduledTime?: string;
+  }) => client.post('/ai/quality-check', input),
 };
 
 export default client;

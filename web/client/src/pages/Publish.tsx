@@ -17,6 +17,8 @@ import {
   Col,
   Modal,
   Steps,
+  Segmented,
+  notification,
 } from 'antd';
 import {
   InboxOutlined,
@@ -30,10 +32,21 @@ import {
   FileTextOutlined,
   EnvironmentOutlined,
   LinkOutlined,
+  DeleteOutlined,
+  ExclamationCircleOutlined,
+  VideoCameraOutlined,
+  PictureOutlined,
 } from '@ant-design/icons';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
 import { publishApi, uploadApi } from '../api/client';
 import dayjs from 'dayjs';
+import ImageTextEditor from '../components/publish/ImageTextEditor';
+import PublishErrorDisplay, {
+  PublishResultExtended,
+  PublishStep,
+  PublishErrorType,
+} from '../components/publish/PublishErrorDisplay';
+import { ImageItem, PublishType } from '../../../../src/models/types';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -44,8 +57,10 @@ const ACCEPTED_FORMATS = ['.mp4', '.mov', '.avi', '.webm', '.mkv'];
 
 const Publish: React.FC = () => {
   const [form] = Form.useForm();
+  const [publishType, setPublishType] = useState<PublishType>('video');
   const [currentStep, setCurrentStep] = useState(0);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [imageItems, setImageItems] = useState<ImageItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
@@ -54,6 +69,15 @@ const Publish: React.FC = () => {
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [inputHashtag, setInputHashtag] = useState('');
   const [result, setResult] = useState<any>(null);
+  
+  // 重试相关状态
+  const [lastPublishResult, setLastPublishResult] = useState<PublishResultExtended | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [lastPublishParams, setLastPublishParams] = useState<{
+    videoPath: string;
+    options: any;
+    isRemoteUrl: boolean;
+  } | null>(null);
 
   const beforeUpload: UploadProps['beforeUpload'] = (file) => {
     if (file.size > MAX_FILE_SIZE) {
@@ -121,6 +145,7 @@ const Publish: React.FC = () => {
       onOk: () => {
         form.resetFields();
         setFileList([]);
+        setImageItems([]);
         setHashtags([]);
         setResult(null);
         setUploadProgress(0);
@@ -131,10 +156,45 @@ const Publish: React.FC = () => {
     });
   };
 
+  // 清除视频文件并重置上传状态
+  const handleClearVideo = () => {
+    setFileList([]);
+    setUploadProgress(0);
+    setUploadStatus('idle');
+    message.info('已清除视频，可重新选择文件');
+  };
+
+  // 重试上传
+  const handleRetryUpload = async () => {
+    if (fileList.length > 0 && fileList[0].originFileObj) {
+      await handleUpload(fileList[0].originFileObj);
+    }
+  };
+
   const handlePublish = async (values: any) => {
-    if (fileList.length === 0 && !values.videoUrl) {
-      message.error('请上传视频文件或输入视频 URL');
-      return;
+    // 图文发布验证
+    if (publishType === 'image-text') {
+      if (imageItems.length === 0) {
+        message.error('请至少上传一张图片');
+        return;
+      }
+      // 检查所有图片是否上传成功
+      const failedImages = imageItems.filter(img => img.uploadStatus === 'error');
+      if (failedImages.length > 0) {
+        message.error('有图片上传失败，请删除后重试');
+        return;
+      }
+      const uploadingImages = imageItems.filter(img => img.uploadStatus === 'uploading');
+      if (uploadingImages.length > 0) {
+        message.error('请等待所有图片上传完成');
+        return;
+      }
+    } else {
+      // 视频发布验证
+      if (fileList.length === 0 && !values.videoUrl) {
+        message.error('请上传视频文件或输入视频 URL');
+        return;
+      }
     }
 
     if (scheduleMode && values.publishTime) {
@@ -149,21 +209,9 @@ const Publish: React.FC = () => {
 
     setPublishing(true);
     setResult(null);
+    setLastPublishResult(null);
 
     try {
-      let videoPath = values.videoUrl;
-      let isRemoteUrl = !!values.videoUrl;
-
-      if (fileList.length > 0 && fileList[0].originFileObj && !values.videoUrl) {
-        const videoId = await handleUpload(fileList[0].originFileObj);
-        if (!videoId) {
-          setPublishing(false);
-          return;
-        }
-        videoPath = videoId;
-        isRemoteUrl = false;
-      }
-
       const options = {
         title: values.title,
         description: values.description,
@@ -177,35 +225,181 @@ const Publish: React.FC = () => {
         articleId: values.articleId,
       };
 
-      if (scheduleMode && values.publishTime) {
-        const response = await publishApi.schedule({
-          videoPath,
-          publishTime: values.publishTime.toISOString(),
-          options,
-          isRemoteUrl,
-        });
-        message.success('定时任务创建成功！');
-        setResult({ ...response.data.data, isScheduled: true });
-      } else {
-        const response = await publishApi.publish({
-          videoPath,
-          options,
-          isRemoteUrl,
-        });
-        
-        if (response.data.data.success) {
-          message.success('视频发布成功！');
+      if (publishType === 'image-text') {
+        // 图文发布
+        const publishImages = imageItems.map(img => ({
+          id: img.id,
+          url: img.url,
+          uploadedUrl: img.uploadedUrl,
+          title: img.title,
+          description: img.description,
+          textStyle: img.textStyle,
+          order: img.order,
+        }));
+
+        if (scheduleMode && values.publishTime) {
+          const response = await publishApi.scheduleImageText({
+            images: publishImages,
+            publishTime: values.publishTime.toISOString(),
+            options,
+          });
+          message.success('图文定时任务创建成功！');
+          setResult({ ...response.data.data, isScheduled: true, isImageText: true });
         } else {
-          message.error(response.data.data.error || '发布失败');
+          const response = await publishApi.publishImageText({
+            images: publishImages,
+            options,
+          });
+          
+          if (response.data.data.success) {
+            message.success('图文发布成功！');
+          } else {
+            message.error(response.data.data.error || '图文发布失败');
+          }
+          setResult({ ...response.data.data, isImageText: true });
         }
-        setResult(response.data.data);
+      } else {
+        // 视频发布
+        let videoPath = values.videoUrl;
+        let isRemoteUrl = !!values.videoUrl;
+
+        if (fileList.length > 0 && fileList[0].originFileObj && !values.videoUrl) {
+          const videoId = await handleUpload(fileList[0].originFileObj);
+          if (!videoId) {
+            setPublishing(false);
+            return;
+          }
+          videoPath = videoId;
+          isRemoteUrl = false;
+        }
+
+        // 保存发布参数用于重试
+        setLastPublishParams({
+          videoPath,
+          options,
+          isRemoteUrl,
+        });
+
+        if (scheduleMode && values.publishTime) {
+          const response = await publishApi.schedule({
+            videoPath,
+            publishTime: values.publishTime.toISOString(),
+            options,
+            isRemoteUrl,
+          });
+          message.success('定时任务创建成功！');
+          setResult({ ...response.data.data, isScheduled: true });
+        } else {
+          const response = await publishApi.publish({
+            videoPath,
+            options,
+            isRemoteUrl,
+          });
+          
+          const publishResult = response.data.data as PublishResultExtended;
+          
+          if (publishResult.success) {
+            message.success('视频发布成功！');
+            setLastPublishResult(null);
+          } else {
+            // 发布失败，保存扩展结果用于重试
+            setLastPublishResult({
+              ...publishResult,
+              originalParams: { videoPath, options, isRemoteUrl },
+            });
+            
+            // 显示错误通知
+            notification.error({
+              message: '发布失败',
+              description: publishResult.friendlyMessage || publishResult.error || '发布过程中发生错误',
+              duration: 0, // 不自动关闭
+            });
+          }
+          setResult(publishResult);
+        }
       }
     } catch (error: any) {
-      message.error(error.response?.data?.error || '操作失败');
-      setResult({ success: false, error: error.response?.data?.error || '未知错误' });
+      const errorMessage = error.response?.data?.error || '操作失败';
+      message.error(errorMessage);
+      
+      const failedResult: PublishResultExtended = {
+        success: false,
+        error: errorMessage,
+        errorType: PublishErrorType.UNKNOWN,
+        retryable: true,
+        originalParams: lastPublishParams || undefined,
+      };
+      
+      setResult(failedResult);
+      setLastPublishResult(failedResult);
+      
+      notification.error({
+        message: '发布失败',
+        description: errorMessage,
+        duration: 0,
+      });
     } finally {
       setPublishing(false);
     }
+  };
+
+  // 重试发布
+  const handleRetry = async (fromStep?: PublishStep) => {
+    if (!lastPublishResult || !lastPublishParams) {
+      message.error('没有可重试的发布任务');
+      return;
+    }
+
+    setRetrying(true);
+    
+    try {
+      const response = await publishApi.retry({
+        originalParams: lastPublishParams,
+        fromStep,
+        uploadedVideoId: lastPublishResult.uploadedVideoId,
+      });
+
+      const retryResult = response.data.data as PublishResultExtended;
+
+      if (retryResult.success) {
+        message.success('重试成功！');
+        setLastPublishResult(null);
+        notification.success({
+          message: '发布成功',
+          description: '视频已成功发布到抖音',
+        });
+      } else {
+        setLastPublishResult({
+          ...retryResult,
+          originalParams: lastPublishParams,
+        });
+        
+        notification.error({
+          message: '重试失败',
+          description: retryResult.friendlyMessage || retryResult.error || '重试过程中发生错误',
+          duration: 0,
+        });
+      }
+
+      setResult(retryResult);
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || '重试失败';
+      message.error(errorMessage);
+      
+      notification.error({
+        message: '重试失败',
+        description: errorMessage,
+        duration: 0,
+      });
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  // 重新授权（Token过期时）
+  const handleReauthorize = () => {
+    // 跳转到授权配置页面
+    window.location.href = '/auth-config';
   };
 
   const formatFileSize = (size: number) => {
@@ -222,6 +416,46 @@ const Publish: React.FC = () => {
 
   return (
     <div>
+      {/* 发布类型切换 */}
+      <Card style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <Text strong style={{ fontSize: 16, marginRight: 16 }}>发布类型</Text>
+            <Segmented
+              value={publishType}
+              onChange={(value) => {
+                setPublishType(value as PublishType);
+                setCurrentStep(0);
+                setResult(null);
+              }}
+              options={[
+                {
+                  label: (
+                    <Space>
+                      <VideoCameraOutlined />
+                      <span>视频发布</span>
+                    </Space>
+                  ),
+                  value: 'video',
+                },
+                {
+                  label: (
+                    <Space>
+                      <PictureOutlined />
+                      <span>图文发布</span>
+                    </Space>
+                  ),
+                  value: 'image-text',
+                },
+              ]}
+            />
+          </div>
+          <Text type="secondary">
+            {publishType === 'video' ? '发布视频内容到抖音' : '发布图文内容到抖音'}
+          </Text>
+        </div>
+      </Card>
+
       {/* 步骤条 */}
       <div
         style={{
@@ -233,9 +467,13 @@ const Publish: React.FC = () => {
       >
         <Steps
           current={currentStep}
-          items={[
+          items={publishType === 'video' ? [
             { title: '上传视频', icon: <CloudUploadOutlined /> },
             { title: '填写信息', icon: <FileTextOutlined /> },
+            { title: '发布设置', icon: <ClockCircleOutlined /> },
+          ] : [
+            { title: '上传图片', icon: <PictureOutlined /> },
+            { title: '编辑内容', icon: <FileTextOutlined /> },
             { title: '发布设置', icon: <ClockCircleOutlined /> },
           ]}
           onChange={setCurrentStep}
@@ -252,7 +490,8 @@ const Publish: React.FC = () => {
         <Row gutter={24}>
           {/* 左侧内容区 */}
           <Col xs={24} lg={16}>
-            {/* 步骤 1: 上传视频 */}
+            {/* 视频上传 - 仅视频模式显示 */}
+            {publishType === 'video' && (
             <Card
               title={
                 <Space>
@@ -295,12 +534,57 @@ const Publish: React.FC = () => {
               {(uploading || uploadStatus !== 'idle') && (
                 <div style={{ marginTop: 16 }}>
                   <Progress percent={uploadProgress} status={getProgressStatus()} />
-                  <Text type="secondary" style={{ fontSize: 13 }}>
-                    {uploadStatus === 'uploading' && '正在上传视频...'}
-                    {uploadStatus === 'success' && '上传完成'}
-                    {uploadStatus === 'error' && '上传失败，请重试'}
-                  </Text>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                    <Text type="secondary" style={{ fontSize: 13 }}>
+                      {uploadStatus === 'uploading' && '正在上传视频...'}
+                      {uploadStatus === 'success' && '上传完成'}
+                      {uploadStatus === 'error' && '上传失败'}
+                    </Text>
+                    {uploadStatus === 'error' && (
+                      <Space>
+                        <Button
+                          type="link"
+                          size="small"
+                          icon={<ReloadOutlined />}
+                          onClick={handleRetryUpload}
+                        >
+                          重试
+                        </Button>
+                        <Button
+                          type="link"
+                          size="small"
+                          danger
+                          icon={<DeleteOutlined />}
+                          onClick={handleClearVideo}
+                        >
+                          删除重选
+                        </Button>
+                      </Space>
+                    )}
+                  </div>
                 </div>
+              )}
+
+              {/* 上传失败时的明显提示 */}
+              {uploadStatus === 'error' && (
+                <Alert
+                  message="视频上传失败"
+                  description="请检查网络连接或文件格式后重试，也可以删除当前文件重新选择。"
+                  type="error"
+                  showIcon
+                  icon={<ExclamationCircleOutlined />}
+                  style={{ marginTop: 16 }}
+                  action={
+                    <Space direction="vertical" size="small">
+                      <Button size="small" type="primary" icon={<ReloadOutlined />} onClick={handleRetryUpload}>
+                        重新上传
+                      </Button>
+                      <Button size="small" danger icon={<DeleteOutlined />} onClick={handleClearVideo}>
+                        删除文件
+                      </Button>
+                    </Space>
+                  }
+                />
               )}
 
               {fileList.length > 0 && fileList[0].size && (
@@ -308,18 +592,33 @@ const Publish: React.FC = () => {
                   style={{
                     marginTop: 16,
                     padding: '12px 16px',
-                    background: '#f5f7fa',
+                    background: uploadStatus === 'error' ? '#fff2f0' : uploadStatus === 'success' ? '#f6ffed' : '#f5f7fa',
                     borderRadius: 8,
+                    border: uploadStatus === 'error' ? '1px solid #ffccc7' : uploadStatus === 'success' ? '1px solid #b7eb8f' : 'none',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                   }}
                 >
                   <Space>
-                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                    <Text>{fileList[0].name}</Text>
+                    {uploadStatus === 'success' && <CheckCircleOutlined style={{ color: '#52c41a' }} />}
+                    {uploadStatus === 'error' && <CloseCircleOutlined style={{ color: '#ff4d4f' }} />}
+                    {uploadStatus !== 'success' && uploadStatus !== 'error' && <CheckCircleOutlined style={{ color: '#1677ff' }} />}
+                    <div>
+                      <Text style={{ display: 'block' }}>{fileList[0].name}</Text>
+                      <Text type="secondary" style={{ fontSize: 12 }}>{formatFileSize(fileList[0].size)}</Text>
+                    </div>
                   </Space>
-                  <Text type="secondary">{formatFileSize(fileList[0].size)}</Text>
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={handleClearVideo}
+                    disabled={uploading}
+                    title="删除视频，重新选择"
+                  >
+                    删除
+                  </Button>
                 </div>
               )}
 
@@ -334,6 +633,31 @@ const Publish: React.FC = () => {
                 </Form.Item>
               </div>
             </Card>
+            )}
+
+            {/* 图文编辑 - 仅图文模式显示 */}
+            {publishType === 'image-text' && (
+            <Card
+              title={
+                <Space>
+                  <PictureOutlined style={{ color: '#1677ff' }} />
+                  <span>图片编辑</span>
+                </Space>
+              }
+              style={{ marginBottom: 24 }}
+            >
+              <ImageTextEditor
+                value={imageItems}
+                onChange={(items) => {
+                  setImageItems(items);
+                  if (items.length > 0 && currentStep === 0) {
+                    setCurrentStep(1);
+                  }
+                }}
+                maxCount={9}
+              />
+            </Card>
+            )}
 
             {/* 步骤 2: 填写信息 */}
             <Card
@@ -352,7 +676,7 @@ const Publish: React.FC = () => {
                     name="title"
                     rules={[{ max: 55, message: '标题最多 55 个字符' }]}
                   >
-                    <Input placeholder="输入视频标题（最多 55 字符）" showCount maxLength={55} />
+                    <Input placeholder={publishType === 'video' ? '输入视频标题（最多 55 字符）' : '输入图文标题（最多 55 字符）'} showCount maxLength={55} />
                   </Form.Item>
                 </Col>
                 <Col span={24}>
@@ -363,7 +687,7 @@ const Publish: React.FC = () => {
                   >
                     <TextArea
                       rows={3}
-                      placeholder="输入视频描述（最多 300 字符）"
+                      placeholder={publishType === 'video' ? '输入视频描述（最多 300 字符）' : '输入图文描述（最多 300 字符）'}
                       showCount
                       maxLength={300}
                     />
@@ -529,12 +853,12 @@ const Publish: React.FC = () => {
                     block
                   >
                     {uploading
-                      ? '视频上传中...'
+                      ? (publishType === 'video' ? '视频上传中...' : '图片上传中...')
                       : publishing
                         ? '发布中...'
                         : scheduleMode
                           ? '创建定时任务'
-                          : '立即发布'}
+                          : (publishType === 'video' ? '立即发布视频' : '立即发布图文')}
                   </Button>
                   <Button
                     size="large"
@@ -549,6 +873,16 @@ const Publish: React.FC = () => {
               </Card>
 
               {/* 结果展示 */}
+              {/* 发布失败时显示错误详情和重试选项 */}
+              {lastPublishResult && !lastPublishResult.success && (
+                <PublishErrorDisplay
+                  result={lastPublishResult}
+                  onRetry={handleRetry}
+                  onReauthorize={handleReauthorize}
+                  retrying={retrying}
+                />
+              )}
+              
               {result && (
                 <Alert
                   message={
@@ -591,15 +925,39 @@ const Publish: React.FC = () => {
                           </Text>
                         </div>
                       )}
-                      {result.error && (
+                      {result.error && !lastPublishResult && (
                         <Text type="danger">{result.error}</Text>
+                      )}
+                      {/* 已上传视频ID提示 */}
+                      {result.uploadedVideoId && !result.success && (
+                        <div>
+                          <Text type="secondary">已上传视频ID: </Text>
+                          <Text code copyable={{ text: result.uploadedVideoId }}>
+                            {result.uploadedVideoId}
+                          </Text>
+                          <Text type="success" style={{ marginLeft: 8 }}>
+                            (可跳过上传步骤重试)
+                          </Text>
+                        </div>
+                      )}
+                      {/* 重试信息 */}
+                      {result.retryCount !== undefined && result.retryCount > 0 && (
+                        <div>
+                          <Text type="secondary">已重试: </Text>
+                          <Text>{result.retryCount} 次</Text>
+                        </div>
                       )}
                     </Space>
                   }
                   type={result.success || result.isScheduled ? 'success' : 'error'}
                   showIcon
                   closable
-                  onClose={() => setResult(null)}
+                  onClose={() => {
+                    setResult(null);
+                    if (!result.success) {
+                      setLastPublishResult(null);
+                    }
+                  }}
                   style={{ borderRadius: 12 }}
                 />
               )}

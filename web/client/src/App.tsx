@@ -11,8 +11,8 @@ import Login from './pages/Login';
 import Profile from './pages/Profile';
 import './App.css';
 
-// 专业商务风格主题配置
-const businessTheme = {
+// 简约紧致风格主题配置
+const compactTheme = {
   token: {
     // 主色调
     colorPrimary: '#1677ff',
@@ -20,79 +20,100 @@ const businessTheme = {
     colorWarning: '#faad14',
     colorError: '#ff4d4f',
     colorInfo: '#1677ff',
-    // 背景色
+    // 背景色 - 柔和
     colorBgContainer: '#ffffff',
-    colorBgLayout: '#f5f7fa',
+    colorBgLayout: '#f8f9fb',
     colorBgElevated: '#ffffff',
     // 文字色
     colorText: '#1f2937',
     colorTextSecondary: '#6b7280',
     colorTextTertiary: '#9ca3af',
     colorTextQuaternary: '#d1d5db',
-    // 边框色
-    colorBorder: '#e5e7eb',
-    colorBorderSecondary: '#f0f0f0',
-    // 圆角
-    borderRadius: 8,
-    borderRadiusLG: 12,
-    borderRadiusSM: 6,
-    // 字体
+    // 边框色 - 更淡
+    colorBorder: '#ebeef2',
+    colorBorderSecondary: '#f3f4f6',
+    // 圆角 - 更小
+    borderRadius: 6,
+    borderRadiusLG: 8,
+    borderRadiusSM: 4,
+    // 字体 - 更小
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
-    fontSize: 14,
-    // 间距
-    padding: 16,
-    paddingLG: 24,
-    paddingSM: 12,
-    paddingXS: 8,
+    fontSize: 13,
+    // 间距 - 更紧凑
+    padding: 12,
+    paddingLG: 16,
+    paddingSM: 10,
+    paddingXS: 6,
     // 线条
     lineWidth: 1,
-    // 阴影
-    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02)',
-    boxShadowSecondary: '0 6px 16px 0 rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.12), 0 9px 28px 8px rgba(0, 0, 0, 0.05)',
+    // 阴影 - 更轻
+    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.02)',
+    boxShadowSecondary: '0 4px 12px rgba(0, 0, 0, 0.08)',
   },
   components: {
     Layout: {
       headerBg: '#ffffff',
-      headerHeight: 64,
-      headerPadding: '0 24px',
+      headerHeight: 48,
+      headerPadding: '0 16px',
       siderBg: '#ffffff',
-      bodyBg: '#f5f7fa',
+      bodyBg: '#f8f9fb',
     },
     Menu: {
       itemBg: 'transparent',
       itemSelectedBg: '#e6f4ff',
       itemSelectedColor: '#1677ff',
       itemHoverBg: '#f5f5f5',
-      iconSize: 18,
-      itemHeight: 48,
-      itemMarginBlock: 4,
-      itemMarginInline: 8,
-      itemBorderRadius: 8,
+      iconSize: 16,
+      itemHeight: 36,
+      itemMarginBlock: 2,
+      itemMarginInline: 6,
+      itemBorderRadius: 6,
+      fontSize: 13,
     },
     Card: {
       headerBg: 'transparent',
-      paddingLG: 24,
+      paddingLG: 16,
+      headerFontSize: 14,
     },
     Button: {
-      controlHeight: 40,
-      controlHeightLG: 48,
-      controlHeightSM: 32,
-      paddingContentHorizontal: 20,
+      controlHeight: 32,
+      controlHeightLG: 40,
+      controlHeightSM: 28,
+      paddingContentHorizontal: 14,
+      fontSize: 13,
     },
     Input: {
-      controlHeight: 40,
-      controlHeightLG: 48,
-      controlHeightSM: 32,
+      controlHeight: 32,
+      controlHeightLG: 40,
+      controlHeightSM: 28,
     },
     Select: {
-      controlHeight: 40,
-      controlHeightLG: 48,
-      controlHeightSM: 32,
+      controlHeight: 32,
+      controlHeightLG: 40,
+      controlHeightSM: 28,
     },
     Table: {
       headerBg: '#fafafa',
       headerColor: '#1f2937',
-      rowHoverBg: '#f5f7fa',
+      rowHoverBg: '#f8f9fb',
+      cellPaddingBlock: 10,
+      cellPaddingInline: 12,
+      headerSplitColor: '#f0f0f0',
+      fontSize: 13,
+    },
+    Form: {
+      itemMarginBottom: 16,
+      labelFontSize: 13,
+    },
+    Tabs: {
+      horizontalItemPadding: '10px 16px',
+      titleFontSize: 13,
+    },
+    Alert: {
+      fontSize: 13,
+    },
+    Modal: {
+      titleFontSize: 15,
     },
   },
 };
@@ -174,7 +195,7 @@ function AppContent() {
 
 function App() {
   return (
-    <ConfigProvider locale={zhCN} theme={businessTheme}>
+    <ConfigProvider locale={zhCN} theme={compactTheme}>
       <AuthProvider>
         <AppContent />
       </AuthProvider>

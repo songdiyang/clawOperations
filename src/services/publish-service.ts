@@ -5,16 +5,25 @@ import { VideoPublish } from '../api/video-publish';
 import {
   PublishTaskConfig,
   PublishResult,
+  PublishResultExtended,
+  PublishStep,
+  PublishErrorType,
   VideoPublishOptions,
   UploadProgress,
+  PublishOptions,
+  RetryRequest,
 } from '../models/types';
 import { validateVideoFile, validatePublishOptions } from '../utils/validator';
+import { classifyError, shouldAutoRetry, calculateRetryDelay } from '../utils/error-classifier';
 import { createLogger } from '../utils/logger';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
 
 const logger = createLogger('PublishService');
+
+/** 默认最大重试次数 */
+const DEFAULT_MAX_RETRIES = 3;
 
 /**
  * 发布服务 - 业务编排层
@@ -31,52 +40,212 @@ export class PublishService {
   }
 
   /**
-   * 一站式发布视频（上传 + 发布）
+   * 一站式发布视频（上传 + 发布）- 增强版，支持分步骤执行和错误分类
    * @param config 发布任务配置
-   * @returns 发布结果
+   * @param options 发布选项（包含重试配置）
+   * @returns 扩展的发布结果
    */
-  async publishVideo(config: PublishTaskConfig): Promise<PublishResult> {
-    const { videoPath, options, isRemoteUrl } = config;
+  async publishVideo(
+    config: PublishTaskConfig,
+    options?: PublishOptions
+  ): Promise<PublishResultExtended> {
+    const { videoPath, options: publishOptions, isRemoteUrl } = config;
+    const { fromStep, uploadedVideoId, retryCount = 0, onProgress } = options || {};
 
-    logger.info(`开始发布流程: ${isRemoteUrl ? 'URL' : '本地文件'} - ${videoPath}`);
+    logger.info(`开始发布流程: ${isRemoteUrl ? 'URL' : '本地文件'} - ${videoPath}, 从步骤: ${fromStep || 'validate'}, 重试次数: ${retryCount}`);
+
+    let currentVideoId = uploadedVideoId;
 
     try {
-      // 1. 验证发布参数
-      validatePublishOptions(options);
-
-      // 2. 上传视频
-      let videoId: string;
-      if (isRemoteUrl) {
-        videoId = await this.videoUpload.uploadFromUrl(videoPath);
-      } else {
-        // 本地文件上传
-        videoId = await this.videoUpload.uploadVideo(videoPath, {
-          onProgress: (progress) => {
-            logger.info(`上传进度: ${progress.percentage}% (${progress.loaded}/${progress.total})`);
-          },
-        });
+      // 步骤1: 参数验证（如果不是从上传或发布步骤开始）
+      if (!fromStep || fromStep === PublishStep.VALIDATE) {
+        onProgress?.(PublishStep.VALIDATE, 0);
+        try {
+          validatePublishOptions(publishOptions);
+          onProgress?.(PublishStep.VALIDATE, 100);
+          logger.info('参数验证通过');
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const classification = classifyError(error instanceof Error ? error : errorMessage);
+          
+          return {
+            success: false,
+            error: errorMessage,
+            errorType: PublishErrorType.VALIDATION_ERROR,
+            errorStep: PublishStep.VALIDATE,
+            retryable: false,
+            retryCount,
+            maxRetries: DEFAULT_MAX_RETRIES,
+            originalParams: config,
+            friendlyMessage: classification.message,
+            suggestion: classification.suggestion,
+          };
+        }
       }
 
-      // 3. 发布视频
-      const publishResult = await this.videoPublish.createVideo(videoId, options);
+      // 步骤2: 上传视频（如果没有已上传的 videoId 且不是从发布步骤开始）
+      if (!currentVideoId && (!fromStep || fromStep === PublishStep.VALIDATE || fromStep === PublishStep.UPLOAD)) {
+        onProgress?.(PublishStep.UPLOAD, 0);
+        try {
+          if (isRemoteUrl) {
+            currentVideoId = await this.videoUpload.uploadFromUrl(videoPath);
+          } else {
+            currentVideoId = await this.videoUpload.uploadVideo(videoPath, {
+              onProgress: (progress) => {
+                onProgress?.(PublishStep.UPLOAD, progress.percentage);
+                logger.info(`上传进度: ${progress.percentage}% (${progress.loaded}/${progress.total})`);
+              },
+            });
+          }
+          onProgress?.(PublishStep.UPLOAD, 100);
+          logger.info(`视频上传成功，video_id: ${currentVideoId}`);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const classification = classifyError(error instanceof Error ? error : errorMessage);
+          
+          logger.error(`上传失败: ${errorMessage}`);
+          
+          return {
+            success: false,
+            error: errorMessage,
+            errorType: classification.type,
+            errorStep: PublishStep.UPLOAD,
+            retryable: classification.retryable,
+            retryCount,
+            maxRetries: DEFAULT_MAX_RETRIES,
+            originalParams: config,
+            friendlyMessage: classification.message,
+            suggestion: classification.suggestion,
+          };
+        }
+      }
 
-      logger.info(`发布流程完成，video_id: ${publishResult.data.video_id}`);
+      // 步骤3: 发布视频
+      onProgress?.(PublishStep.PUBLISH, 0);
+      try {
+        const publishResult = await this.videoPublish.createVideo(currentVideoId!, publishOptions);
+        onProgress?.(PublishStep.PUBLISH, 100);
+        
+        logger.info(`发布流程完成，video_id: ${publishResult.data.video_id}`);
 
-      return {
-        success: true,
-        videoId: publishResult.data.video_id,
-        shareUrl: publishResult.data.share_url,
-        createTime: publishResult.data.create_time,
-      };
+        return {
+          success: true,
+          videoId: publishResult.data.video_id,
+          shareUrl: publishResult.data.share_url,
+          createTime: publishResult.data.create_time,
+          retryCount,
+          maxRetries: DEFAULT_MAX_RETRIES,
+          originalParams: config,
+          uploadedVideoId: currentVideoId,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const classification = classifyError(error instanceof Error ? error : errorMessage);
+        
+        logger.error(`发布失败: ${errorMessage}`);
+        
+        return {
+          success: false,
+          error: errorMessage,
+          errorType: classification.type,
+          errorStep: PublishStep.PUBLISH,
+          retryable: classification.retryable,
+          retryCount,
+          maxRetries: DEFAULT_MAX_RETRIES,
+          originalParams: config,
+          uploadedVideoId: currentVideoId, // 保存已上传的 videoId，便于重试时跳过上传
+          friendlyMessage: classification.message,
+          suggestion: classification.suggestion,
+        };
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error(`发布流程失败: ${errorMessage}`);
+      const classification = classifyError(error instanceof Error ? error : errorMessage);
+      
+      logger.error(`发布流程异常: ${errorMessage}`);
 
       return {
         success: false,
         error: errorMessage,
+        errorType: classification.type,
+        errorStep: PublishStep.VALIDATE,
+        retryable: classification.retryable,
+        retryCount,
+        maxRetries: DEFAULT_MAX_RETRIES,
+        originalParams: config,
+        uploadedVideoId: currentVideoId,
+        friendlyMessage: classification.message,
+        suggestion: classification.suggestion,
       };
     }
+  }
+
+  /**
+   * 重试发布
+   * @param request 重试请求参数
+   * @returns 发布结果
+   */
+  async retryPublish(request: RetryRequest): Promise<PublishResultExtended> {
+    const { fromStep, originalParams, uploadedVideoId } = request;
+    
+    logger.info(`重试发布，从步骤: ${fromStep || 'validate'}，已上传videoId: ${uploadedVideoId || '无'}`);
+    
+    // 获取之前的重试次数并递增
+    const previousResult = await this.publishVideo(originalParams);
+    const retryCount = (previousResult.retryCount || 0) + 1;
+    
+    return this.publishVideo(originalParams, {
+      fromStep,
+      uploadedVideoId,
+      retryCount,
+    });
+  }
+
+  /**
+   * 带自动重试的发布
+   * @param config 发布任务配置
+   * @param maxRetries 最大重试次数
+   * @returns 发布结果
+   */
+  async publishVideoWithRetry(
+    config: PublishTaskConfig,
+    maxRetries: number = DEFAULT_MAX_RETRIES
+  ): Promise<PublishResultExtended> {
+    let result: PublishResultExtended;
+    let retryCount = 0;
+    let uploadedVideoId: string | undefined;
+
+    while (retryCount <= maxRetries) {
+      result = await this.publishVideo(config, {
+        fromStep: uploadedVideoId ? PublishStep.PUBLISH : undefined,
+        uploadedVideoId,
+        retryCount,
+      });
+
+      if (result.success) {
+        return result;
+      }
+
+      // 保存已上传的 videoId
+      if (result.uploadedVideoId) {
+        uploadedVideoId = result.uploadedVideoId;
+      }
+
+      // 检查是否应该自动重试
+      if (!shouldAutoRetry(result.errorType || PublishErrorType.UNKNOWN, retryCount, maxRetries)) {
+        logger.info(`错误类型 ${result.errorType} 不支持自动重试或已达最大重试次数`);
+        return result;
+      }
+
+      // 计算延迟时间
+      const delay = calculateRetryDelay(retryCount);
+      logger.info(`将在 ${delay}ms 后进行第 ${retryCount + 1} 次重试`);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+      retryCount++;
+    }
+
+    return result!;
   }
 
   /**
@@ -101,7 +270,7 @@ export class PublishService {
   async publishUploadedVideo(
     videoId: string,
     options?: VideoPublishOptions
-  ): Promise<PublishResult> {
+  ): Promise<PublishResultExtended> {
     try {
       validatePublishOptions(options);
 
@@ -112,14 +281,23 @@ export class PublishService {
         videoId: result.data.video_id,
         shareUrl: result.data.share_url,
         createTime: result.data.create_time,
+        uploadedVideoId: videoId,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const classification = classifyError(error instanceof Error ? error : errorMessage);
+      
       logger.error(`发布失败: ${errorMessage}`);
 
       return {
         success: false,
         error: errorMessage,
+        errorType: classification.type,
+        errorStep: PublishStep.PUBLISH,
+        retryable: classification.retryable,
+        uploadedVideoId: videoId,
+        friendlyMessage: classification.message,
+        suggestion: classification.suggestion,
       };
     }
   }
@@ -133,7 +311,7 @@ export class PublishService {
   async downloadAndPublish(
     videoUrl: string,
     options?: VideoPublishOptions
-  ): Promise<PublishResult> {
+  ): Promise<PublishResultExtended> {
     logger.info(`下载并发布视频: ${videoUrl}`);
 
     const tempFilePath = path.join(process.cwd(), `temp_${Date.now()}.mp4`);
@@ -156,11 +334,18 @@ export class PublishService {
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const classification = classifyError(error instanceof Error ? error : errorMessage);
+      
       logger.error(`下载并发布失败: ${errorMessage}`);
 
       return {
         success: false,
         error: errorMessage,
+        errorType: classification.type,
+        errorStep: PublishStep.UPLOAD,
+        retryable: classification.retryable,
+        friendlyMessage: classification.message,
+        suggestion: classification.suggestion,
       };
     } finally {
       // 清理临时文件
