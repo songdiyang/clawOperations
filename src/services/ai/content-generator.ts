@@ -206,14 +206,12 @@ export class ContentGenerator {
    */
   async checkTaskStatus(taskId: string): Promise<{
     status: string;
-    progress?: number;
     error?: string;
   }> {
     const result = await this.doubaoClient.checkTaskStatus(taskId);
     return {
       status: result.status,
-      progress: result.progress,
-      error: result.error,
+      error: result.error?.message,
     };
   }
 

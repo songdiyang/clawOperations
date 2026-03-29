@@ -37,37 +37,46 @@ interface ImageGenerationResponse {
 }
 
 /**
- * 视频生成请求
+ * 视频生成请求 (火山引擎方舟 contents/generations/tasks API)
  */
 interface VideoGenerationRequest {
   model: string;
-  prompt: string;
-  duration?: number;
+  content: { type: string; text?: string; image_url?: { url: string } }[];
   resolution?: string;
+  ratio?: string;
+  duration?: number;
+  watermark?: boolean;
 }
 
 /**
- * 视频生成响应
+ * 视频生成响应 (创建任务返回)
  */
 interface VideoGenerationResponse {
-  task_id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  id: string;
 }
 
 /**
- * 任务状态响应
+ * 任务状态响应 (火山引擎方舟 contents/generations/tasks/{id} API)
  */
 interface TaskStatusResponse {
-  task_id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  progress?: number;
-  result?: {
-    url: string;
-    duration?: number;
-    width?: number;
-    height?: number;
+  id: string;
+  model: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'expired' | 'cancelled';
+  content?: {
+    video_url?: string;
   };
-  error?: string;
+  usage?: {
+    completion_tokens: number;
+    total_tokens: number;
+  };
+  resolution?: string;
+  ratio?: string;
+  duration?: number;
+  framespersecond?: number;
+  error?: {
+    code: string;
+    message: string;
+  };
 }
 
 /**
@@ -194,45 +203,50 @@ export class DoubaoClient {
     logger.info('开始生成视频', { promptLength: prompt.length });
 
     try {
-      // 1. 创建视频生成任务
+      // 1. 创建视频生成任务 (火山引擎方舟 API)
       const request: VideoGenerationRequest = {
         model: this.videoModel,
-        prompt,
+        content: [
+          {
+            type: 'text',
+            text: prompt,
+          },
+        ],
         duration: options?.duration || 5,
         resolution: options?.resolution || '720p',
+        ratio: '16:9',
+        watermark: false,
       };
 
       const response = await this.client.post<VideoGenerationResponse>(
-        '/videos/generations',
+        '/contents/generations/tasks',
         request
       );
 
-      const taskId = response.data.task_id;
+      const taskId = response.data.id;
       logger.info('视频生成任务已创建', { taskId });
 
       // 2. 轮询任务状态
       const result = await this.waitForTask(taskId);
 
-      if (!result.result?.url) {
+      if (!result.content?.video_url) {
         throw new Error('视频生成失败：未返回视频URL');
       }
 
       // 3. 下载视频到本地
       const fileName = `video_${Date.now()}.mp4`;
       const localPath = path.join(this.outputDir, fileName);
-      await this.downloadFile(result.result.url, localPath);
+      await this.downloadFile(result.content.video_url, localPath);
 
-      logger.info('视频生成完成', { localPath, duration: result.result.duration });
+      logger.info('视频生成完成', { localPath, duration: result.duration });
 
       return {
         type: 'video',
         localPath,
-        previewUrl: result.result.url,
+        previewUrl: result.content.video_url,
         taskId,
         metadata: {
-          width: result.result.width,
-          height: result.result.height,
-          duration: result.result.duration,
+          duration: result.duration,
           size: fs.statSync(localPath).size,
         },
       };
@@ -250,7 +264,7 @@ export class DoubaoClient {
   async checkTaskStatus(taskId: string): Promise<TaskStatusResponse> {
     try {
       const response = await this.client.get<TaskStatusResponse>(
-        `/videos/generations/${taskId}`
+        `/contents/generations/tasks/${taskId}`
       );
       return response.data;
     } catch (error: any) {
@@ -272,16 +286,15 @@ export class DoubaoClient {
 
       logger.debug('任务状态', { 
         taskId, 
-        status: status.status, 
-        progress: status.progress 
+        status: status.status,
       });
 
-      if (status.status === 'completed') {
+      if (status.status === 'succeeded') {
         return status;
       }
 
-      if (status.status === 'failed') {
-        throw new Error(status.error || '任务执行失败');
+      if (status.status === 'failed' || status.status === 'expired' || status.status === 'cancelled') {
+        throw new Error(status.error?.message || `任务${status.status === 'failed' ? '执行失败' : status.status === 'expired' ? '已过期' : '已取消'}`);
       }
 
       // 等待后继续轮询
