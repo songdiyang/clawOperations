@@ -17,7 +17,16 @@
 - [web/server/src/index.ts](file://web/server/src/index.ts)
 - [web/server/src/routes/ai.ts](file://web/server/src/routes/ai.ts)
 - [web/client/src/pages/AICreator.tsx](file://web/client/src/pages/AICreator.tsx)
+- [src/api/ai/doubao-client.ts](file://src/api/ai/doubao-client.ts)
+- [src/services/ai-publish-service.ts](file://src/services/ai-publish-service.ts)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 更新Doubao AI视频生成服务API端点从/videos/generations到/contents/generations/tasks
+- 新增任务驱动的视频生成架构，支持异步状态跟踪
+- 超时时间从30秒增加到5分钟，增强错误处理机制
+- 更新AI服务组件架构图以反映新的API结构
 
 ## 目录
 1. [项目概述](#项目概述)
@@ -41,6 +50,7 @@ AI内容生成系统是一个基于抖音（TikTok）平台的智能内容创作
 - **定时发布**：提供cron表达式的定时发布功能
 - **前后端分离**：采用React前端和Node.js后端架构
 - **企业级配置**：支持环境变量配置和多种AI服务集成
+- **任务驱动架构**：支持异步任务处理和状态跟踪
 
 **章节来源**
 - [README.md:1-152](file://README.md#L1-L152)
@@ -71,6 +81,8 @@ subgraph "AI服务"
 K[需求分析器]
 L[内容生成器]
 M[文案生成器]
+N[Doubao AI客户端]
+O[AI发布编排服务]
 end
 A --> D
 B --> A
@@ -84,6 +96,8 @@ G --> J
 F --> K
 F --> L
 F --> M
+F --> N
+F --> O
 ```
 
 **图表来源**
@@ -144,7 +158,7 @@ PublishService --> VideoPublish : "组合"
 
 ### AI服务组件
 
-系统集成了多个AI服务，包括需求分析、内容生成和文案创作：
+系统集成了多个AI服务，包括需求分析、内容生成和文案创作，其中Doubao AI客户端已更新为任务驱动架构：
 
 ```mermaid
 classDiagram
@@ -171,25 +185,58 @@ class CopywritingGenerator {
 +quickGenerate(theme, keyPoints) GeneratedCopywriting
 +optimize(existingCopy, suggestions) GeneratedCopywriting
 }
+class DoubaoClient {
+-AxiosInstance client
+-string imageModel
+-string videoModel
+-number pollInterval
+-number taskTimeout
+-string outputDir
++generateImage(prompt, options) GeneratedContent
++generateVideo(prompt, options) GeneratedContent
++checkTaskStatus(taskId) TaskStatusResponse
++waitForTask(taskId) TaskStatusResponse
+}
+class AIPublishService {
+-RequirementAnalyzer requirementAnalyzer
+-ContentGenerator contentGenerator
+-CopywritingGenerator copywritingGenerator
+-PublishService publishService
+-Map~string, AITaskStatus~ taskStore
++createAndPublish(userInput, config, onProgress) AIPublishResult
++analyzeRequirement(userInput, config) RequirementAnalysis
++generateContent(analysis, onProgress) GeneratedContent
++generateCopywriting(analysis) GeneratedCopywriting
++publish(content, copywriting, config) PublishResult
++getTaskStatus(taskId) AITaskStatus
+}
 RequirementAnalyzer --> DeepSeekClient : "使用"
 ContentGenerator --> DoubaoClient : "使用"
 CopywritingGenerator --> DeepSeekClient : "使用"
+AIPublishService --> RequirementAnalyzer : "使用"
+AIPublishService --> ContentGenerator : "使用"
+AIPublishService --> CopywritingGenerator : "使用"
+AIPublishService --> PublishService : "使用"
 ```
 
 **图表来源**
 - [src/services/ai/requirement-analyzer.ts:25-34](file://src/services/ai/requirement-analyzer.ts#L25-L34)
 - [src/services/ai/content-generator.ts:38-54](file://src/services/ai/content-generator.ts#L38-L54)
 - [src/services/ai/copywriting-generator.ts:30-47](file://src/services/ai/copywriting-generator.ts#L30-L47)
+- [src/api/ai/doubao-client.ts:85-123](file://src/api/ai/doubao-client.ts#L85-L123)
+- [src/services/ai-publish-service.ts:43-73](file://src/services/ai-publish-service.ts#L43-L73)
 
 **章节来源**
 - [src/index.ts:29-244](file://src/index.ts#L29-L244)
 - [src/services/ai/requirement-analyzer.ts:1-128](file://src/services/ai/requirement-analyzer.ts#L1-L128)
 - [src/services/ai/content-generator.ts:1-229](file://src/services/ai/content-generator.ts#L1-L229)
 - [src/services/ai/copywriting-generator.ts:1-194](file://src/services/ai/copywriting-generator.ts#L1-L194)
+- [src/api/ai/doubao-client.ts:1-362](file://src/api/ai/doubao-client.ts#L1-L362)
+- [src/services/ai-publish-service.ts:1-358](file://src/services/ai-publish-service.ts#L1-L358)
 
 ## 架构概览
 
-系统采用分层架构设计，实现了清晰的关注点分离：
+系统采用分层架构设计，实现了清晰的关注点分离，现已支持任务驱动的异步处理：
 
 ```mermaid
 graph TB
@@ -206,6 +253,7 @@ subgraph "业务层"
 AIPubService[AI发布服务]
 PubService[发布服务]
 SchedulerService[定时服务]
+TaskManager[任务管理器]
 end
 subgraph "数据访问层"
 DouyinClient[抖音API客户端]
@@ -220,16 +268,19 @@ AuthCtrl --> AIPubService
 AICtrl --> AIPubService
 PubCtrl --> PubService
 AIPubService --> PubService
+AIPubService --> TaskManager
 PubService --> SchedulerService
 AIPubService --> DoubaoClient
 AIPubService --> DeepSeekClient
 PubService --> DouyinClient
+TaskManager --> DoubaoClient
 ```
 
 **图表来源**
 - [web/server/src/routes/ai.ts:14-58](file://web/server/src/routes/ai.ts#L14-L58)
 - [src/services/publish-service.ts:27-31](file://src/services/publish-service.ts#L27-L31)
 - [src/services/scheduler-service.ts:27-29](file://src/services/scheduler-service.ts#L27-L29)
+- [src/services/ai-publish-service.ts:43-73](file://src/services/ai-publish-service.ts#L43-L73)
 
 **章节来源**
 - [web/server/src/index.ts:1-55](file://web/server/src/index.ts#L1-L55)
@@ -347,7 +398,7 @@ SchedulerService --> PublishService : "调用"
 
 ### AI创作工作流
 
-AI创作系统实现了从需求分析到内容发布的完整自动化流程：
+AI创作系统实现了从需求分析到内容发布的完整自动化流程，现已支持任务驱动的异步处理：
 
 ```mermaid
 sequenceDiagram
@@ -355,12 +406,16 @@ participant User as "用户"
 participant API as "AI API"
 participant Analyzer as "需求分析器"
 participant Generator as "内容生成器"
+participant DoubaoClient as "Doubao客户端"
 participant Copywriter as "文案生成器"
 participant Publisher as "发布服务"
 User->>API : 提交创作需求
 API->>Analyzer : 分析用户输入
 Analyzer-->>API : 返回分析结果
 API->>Generator : 生成内容
+Generator->>DoubaoClient : 创建视频生成任务
+DoubaoClient->>DoubaoClient : 轮询任务状态
+DoubaoClient-->>Generator : 返回生成结果
 Generator-->>API : 返回生成内容
 API->>Copywriter : 生成文案
 Copywriter-->>API : 返回文案
@@ -374,17 +429,89 @@ Publisher-->>API : 返回发布结果
 - [web/server/src/routes/ai.ts:158-191](file://web/server/src/routes/ai.ts#L158-L191)
 - [src/services/ai/content-generator.ts:62-102](file://src/services/ai/content-generator.ts#L62-L102)
 - [src/services/ai/copywriting-generator.ts:54-74](file://src/services/ai/copywriting-generator.ts#L54-L74)
+- [src/api/ai/doubao-client.ts:205-257](file://src/api/ai/doubao-client.ts#L205-L257)
+
+**更新** Doubao AI客户端已从直接生成模式迁移到任务驱动模式，支持异步状态跟踪和更长的超时时间。
 
 AI工作流的关键特性：
 - 支持自动内容类型选择
 - 多阶段进度反馈
 - 错误处理和重试机制
 - 与发布系统的无缝集成
+- 任务状态跟踪和管理
 
 **章节来源**
 - [web/server/src/routes/ai.ts:1-323](file://web/server/src/routes/ai.ts#L1-L323)
 - [src/services/ai/content-generator.ts:1-229](file://src/services/ai/content-generator.ts#L1-L229)
 - [src/services/ai/copywriting-generator.ts:1-194](file://src/services/ai/copywriting-generator.ts#L1-L194)
+- [src/api/ai/doubao-client.ts:1-362](file://src/api/ai/doubao-client.ts#L1-L362)
+
+### Doubao AI客户端架构
+
+Doubao AI客户端已完全重构为任务驱动架构，支持异步视频生成和状态跟踪：
+
+```mermaid
+classDiagram
+class DoubaoClient {
+-AxiosInstance client
+-string imageModel
+-string videoModel
+-number pollInterval
+-number taskTimeout
+-string outputDir
++generateImage(prompt, options) GeneratedContent
++generateVideo(prompt, options) GeneratedContent
++checkTaskStatus(taskId) TaskStatusResponse
++waitForTask(taskId) TaskStatusResponse
+-downloadFile(url, destPath) Promise~void~
+-sleep(ms) Promise~void~
+}
+class VideoGenerationRequest {
++model : string
++content : Content[]
++resolution? : string
++ratio? : string
++duration? : number
++watermark? : boolean
+}
+class TaskStatusResponse {
++id : string
++model : string
++status : Status
++content? : Content
++usage? : Usage
++resolution? : string
++ratio? : string
++duration? : number
++framespersecond? : number
++error? : Error
+}
+class Content {
++type : string
++text? : string
++image_url? : ImageUrl
+}
+DoubaoClient --> VideoGenerationRequest : "创建"
+DoubaoClient --> TaskStatusResponse : "轮询"
+DoubaoClient --> Content : "使用"
+```
+
+**图表来源**
+- [src/api/ai/doubao-client.ts:85-123](file://src/api/ai/doubao-client.ts#L85-L123)
+- [src/api/ai/doubao-client.ts:41-80](file://src/api/ai/doubao-client.ts#L41-L80)
+
+**更新** Doubao AI客户端已从/videos/generations端点迁移到/contents/generations/tasks端点，采用内容驱动的请求结构，支持异步任务处理。
+
+Doubao客户端的关键变更：
+- **API端点迁移**：从/videos/generations到/contents/generations/tasks
+- **内容驱动结构**：请求参数改为content数组结构
+- **任务驱动模式**：支持异步任务创建和状态轮询
+- **超时时间增加**：从30秒增加到5分钟（300秒）
+- **增强错误处理**：支持任务状态检查和错误信息追踪
+
+**章节来源**
+- [src/api/ai/doubao-client.ts:1-362](file://src/api/ai/doubao-client.ts#L1-L362)
+- [config/default.ts:50-59](file://config/default.ts#L50-L59)
 
 ## 依赖关系分析
 
@@ -408,10 +535,12 @@ Auth[src/api/auth.ts]
 Publish[src/services/publish-service.ts]
 Scheduler[src/services/scheduler-service.ts]
 Logger[src/utils/logger.ts]
+AIPublish[src/services/ai-publish-service.ts]
+DoubaoClient[src/api/ai/doubao-client.ts]
+ContentGen[src/services/ai/content-generator.ts]
 end
 subgraph "AI服务"
 ReqAnalyzer[src/services/ai/requirement-analyzer.ts]
-ContentGen[src/services/ai/content-generator.ts]
 Copywriter[src/services/ai/copywriting-generator.ts]
 end
 subgraph "Web层"
@@ -420,6 +549,7 @@ Routes[web/server/src/routes/ai.ts]
 Client[web/client/src/pages/AICreator.tsx]
 end
 Axios --> Auth
+Axios --> DoubaoClient
 Winston --> Logger
 NodeCron --> Scheduler
 Dotenv --> Config
@@ -429,6 +559,9 @@ Index --> Scheduler
 Publish --> Auth
 Publish --> Logger
 Scheduler --> Publish
+AIPublish --> DoubaoClient
+AIPublish --> ContentGen
+AIPublish --> Copywriter
 ReqAnalyzer --> Logger
 ContentGen --> Logger
 Copywriter --> Logger
@@ -466,6 +599,12 @@ Client --> Server
 - 生成内容的本地缓存
 - 配置信息的内存缓存
 
+### 任务处理优化
+- **异步任务处理**：视频生成采用任务驱动模式，避免长时间阻塞
+- **状态轮询优化**：合理的轮询间隔（3秒）平衡响应性和资源消耗
+- **超时管理**：5分钟超时时间适应视频生成的较长处理时间
+- **错误重试机制**：支持任务状态查询和错误信息追踪
+
 ## 故障排除指南
 
 ### 常见问题及解决方案
@@ -476,9 +615,11 @@ Client --> Server
 - 确认网络连接和防火墙设置
 
 **内容生成超时**
+- **Doubao API变更**：确认已更新到新的/contents/generations/tasks端点
 - 检查AI服务的API密钥配置
 - 验证网络连接和带宽
 - 查看AI服务的配额限制
+- **新增**：检查任务状态轮询是否正常工作
 
 **视频上传失败**
 - 确认文件格式和大小限制
@@ -490,9 +631,16 @@ Client --> Server
 - 验证cron表达式的正确性
 - 查看任务日志和错误信息
 
+**任务驱动模式问题**
+- **新增**：确认任务ID格式正确
+- **新增**：检查任务状态轮询间隔设置
+- **新增**：验证超时时间配置（5分钟）
+- **新增**：查看任务错误信息和状态码
+
 **章节来源**
 - [src/utils/logger.ts:1-61](file://src/utils/logger.ts#L1-L61)
 - [src/services/publish-service.ts:165-172](file://src/services/publish-service.ts#L165-L172)
+- [src/api/ai/doubao-client.ts:281-305](file://src/api/ai/doubao-client.ts#L281-L305)
 
 ## 结论
 
@@ -504,6 +652,7 @@ AI内容生成系统是一个功能完整、架构清晰的现代化内容创作
 2. **架构合理性**：采用分层架构，职责分离明确
 3. **扩展性强**：模块化设计便于功能扩展和维护
 4. **用户体验好**：提供直观的前端界面和流畅的操作体验
+5. **任务驱动架构**：支持异步处理和状态跟踪，提升系统可靠性
 
 ### 发展方向
 
@@ -511,5 +660,8 @@ AI内容生成系统是一个功能完整、架构清晰的现代化内容创作
 2. **多平台支持**：扩展到其他社交媒体平台
 3. **自动化程度提升**：实现更智能的内容推荐和优化
 4. **数据分析能力**：增加内容效果分析和优化建议
+5. **任务管理优化**：进一步完善异步任务处理和状态跟踪机制
+
+**更新** 系统已成功迁移到Doubao AI的最新API架构，采用任务驱动模式处理视频生成，显著提升了系统的稳定性和可靠性。
 
 该系统为内容创作者和营销团队提供了一个强大而易用的工具，有助于在数字内容领域保持竞争优势。

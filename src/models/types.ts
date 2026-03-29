@@ -30,7 +30,8 @@ export interface TokenResponse {
   access_token: string;
   refresh_token: string;
   expires_in: number;
-  open_id: string;
+  open_id?: string;  // 抽音 API 可能返回 open_id 或 openid
+  openid?: string;   // 兼容两种格式
   scope: string;
 }
 

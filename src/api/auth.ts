@@ -78,6 +78,9 @@ export class DouyinAuth {
         params,
       });
 
+      // 调试日志：打印原始响应以便排查字段名问题
+      logger.debug(`Token 响应原始数据: ${JSON.stringify(response)}`);
+
       this.tokenInfo = this.parseTokenResponse(response);
       this.client.setAccessToken(this.tokenInfo.accessToken);
 
@@ -174,12 +177,14 @@ export class DouyinAuth {
    */
   private parseTokenResponse(response: TokenResponse): TokenInfo {
     const expiresAt = Date.now() + response.expires_in * 1000;
+    // 兼容抽音 API 返回 open_id 或 openid 两种格式
+    const openId = response.open_id || response.openid || '';
     
     return {
       accessToken: response.access_token,
       refreshToken: response.refresh_token,
       expiresAt,
-      openId: response.open_id,
+      openId,
       scope: response.scope,
     };
   }
