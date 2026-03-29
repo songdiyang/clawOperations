@@ -83,13 +83,13 @@ http://101.133.162.255/auth/callback
 pm2 status
 
 # 查看日志
-pm2 logs clawops-server
+pm2 logs clawoperations-server
 
 # 重启服务
-pm2 restart clawops-server
+pm2 restart clawoperations-server
 
 # 停止服务
-pm2 stop clawops-server
+pm2 stop clawoperations-server
 ```
 
 ### Nginx 管理
@@ -123,7 +123,7 @@ tail -f /var/log/nginx/clawoperations-error.log
 ### 1. 服务未启动
 ```bash
 pm2 status
-pm2 logs clawops-server --lines 100
+pm2 logs clawoperations-server --lines 100
 ```
 
 ### 2. Nginx 502 错误

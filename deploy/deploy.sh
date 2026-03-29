@@ -39,19 +39,24 @@ else
     exit 1
 fi
 
-# 4. 安装后端依赖
-echo "[4/7] 安装后端依赖..."
+# 4. 安装后端依赖（包含构建所需的 devDependencies）
+echo "[4/8] 安装后端依赖..."
 cd $APP_DIR/web/server
-npm install --production
+npm install
 echo "后端依赖安装完成"
 
 # 5. 编译后端 TypeScript
-echo "[5/7] 编译后端代码..."
+echo "[5/8] 编译后端代码..."
 npm run build
 echo "后端编译完成"
 
-# 6. 配置环境变量
-echo "[6/7] 配置环境变量..."
+# 6. 清理开发依赖，保留生产运行所需依赖
+echo "[6/8] 清理开发依赖..."
+npm prune --omit=dev
+echo "开发依赖已清理"
+
+# 7. 配置环境变量
+echo "[7/8] 配置环境变量..."
 if [ -f ".env.production" ]; then
     cp .env.production .env
     echo "环境变量已配置"
@@ -59,8 +64,8 @@ else
     echo "警告: 未找到 .env.production，请手动配置"
 fi
 
-# 7. 重启服务
-echo "[7/7] 重启服务..."
+# 8. 重启服务
+echo "[8/8] 重启服务..."
 cd $APP_DIR
 pm2 delete clawoperations-server 2>/dev/null || true
 pm2 start deploy/ecosystem.config.js

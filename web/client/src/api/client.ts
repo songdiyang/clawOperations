@@ -49,6 +49,40 @@ const client = axios.create({
   },
 });
 
+// AI 生成用的长超时客户端 (10分钟，视频生成需要较长时间)
+const aiClient = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 600000, // 10 分钟
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// 为 aiClient 添加相同的拦截器
+aiClient.interceptors.request.use(
+  (config) => {
+    const token = getStoredToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+aiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      clearStoredToken();
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    }
+    return Promise.reject(error);
+  }
+);
+
 // 请求拦截器 - 自动添加 Token
 client.interceptors.request.use(
   (config) => {
@@ -307,9 +341,9 @@ export const aiApi = {
   analyze: (input: string, contentTypePreference?: 'image' | 'video') =>
     client.post('/ai/analyze', { input, contentTypePreference }),
   
-  /** 生成内容（图片/视频） */
+  /** 生成内容（图片/视频） - 使用长超时 */
   generate: (analysis: any) =>
-    client.post('/ai/generate', { analysis }),
+    aiClient.post('/ai/generate', { analysis }),
   
   /** 生成文案 */
   getCopywriting: (analysis: any) =>
@@ -408,9 +442,9 @@ export const aiApi = {
     templateId?: string;
   }) => client.post('/ai/workflow/start', data),
   
-  /** 执行单步操作 */
+  /** 执行单步操作 - 使用长超时 */
   executeStep: (taskId: string, step: 'analyze' | 'generate' | 'copywriting' | 'preview' | 'complete') =>
-    client.post('/ai/workflow/step', { taskId, step }),
+    aiClient.post('/ai/workflow/step', { taskId, step }),
   
   /** 获取下一步建议 */
   getNextAction: (taskId: string) => client.get(`/ai/workflow/${taskId}/next-action`),
