@@ -347,6 +347,29 @@ router.post('/publish', async (req: Request, res: Response) => {
       autoPublish: true,
     });
 
+    // 保存到历史记录（持久化）
+    try {
+      creationTaskService.saveToHistory({
+        id: result.taskId || `ai_${Date.now()}`,
+        status: result.success ? 'completed' : 'failed',
+        requirement: input,
+        contentTypePreference: config?.contentTypePreference,
+        analysis: result.analysis,
+        content: result.content,
+        copywriting: result.copywriting,
+        progress: 100,
+        currentStepMessage: result.success ? '完成' : (result.error || '失败'),
+        error: result.error,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        canResume: false,
+        lastCompletedStep: result.success ? 4 : 0,
+      });
+    } catch (saveError) {
+      console.error('保存到历史记录失败:', saveError);
+      // 不影响主流程
+    }
+
     res.json({
       success: result.success,
       data: result,
@@ -398,16 +421,45 @@ router.get('/task/:taskId', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/ai/tasks - 获取所有任务
+ * GET /api/ai/tasks - 获取所有 AI 创作任务（从持久化存储读取）
  */
 router.get('/tasks', async (req: Request, res: Response) => {
   try {
+    // 从内存中获取正在进行的任务
     const service = getAIPublishService();
-    const tasks = service.getAllTasks();
+    const inProgressTasks = service.getAllTasks();
+    
+    // 从数据库获取历史任务（最近 50 条）
+    const historyTasks = creationTaskService.getHistory({ limit: 50 });
+    
+    // 将历史任务转换为 AI 任务格式
+    const persistedTasks = historyTasks.map(task => ({
+      taskId: task.id,
+      status: task.status === 'completed' ? 'completed' : 
+              task.status === 'failed' ? 'failed' : 'pending',
+      progress: task.progress || (task.status === 'completed' ? 100 : 0),
+      currentStep: task.currentStepMessage || '',
+      createdAt: new Date(task.createdAt).getTime(),
+      updatedAt: new Date(task.updatedAt).getTime(),
+      error: task.error,
+      result: task.content ? {
+        success: task.status === 'completed',
+        analysis: task.analysis,
+        content: task.content,
+        copywriting: task.copywriting,
+      } : undefined,
+    }));
+    
+    // 合并内存中的任务和持久化的任务，去重（优先显示内存中的实时状态）
+    const inProgressIds = new Set(inProgressTasks.map(t => t.taskId));
+    const allTasks = [
+      ...inProgressTasks,
+      ...persistedTasks.filter(t => !inProgressIds.has(t.taskId)),
+    ];
 
     res.json({
       success: true,
-      data: tasks,
+      data: allTasks,
     });
   } catch (error: any) {
     console.error('获取任务列表失败:', error);
