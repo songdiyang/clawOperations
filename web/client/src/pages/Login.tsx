@@ -9,7 +9,7 @@ import {
   ThunderboltOutlined,
   SafetyOutlined,
 } from '@ant-design/icons';
-import { authApi } from '../api/client';
+import { authApi, setStoredToken, setStoredUser } from '../api/client';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -57,14 +57,18 @@ const Login: React.FC<LoginProps> = ({ onDevModeEnter }) => {
     }
   }, []);
 
-  // 处理抖音授权回调
+  // 处理抽音授权回调
   const handleDouyinCallback = async (code: string) => {
     setLoading(true);
     try {
       const response = await authApi.douyinLoginCallback(code);
-      
+        
       if (response.data?.success && response.data?.data) {
-        localStorage.setItem('token', response.data.data.token);
+        // 使用正确的存储函数，确保 token key 一致
+        setStoredToken(response.data.data.token);
+        if (response.data.data.user) {
+          setStoredUser(response.data.data.user);
+        }
         message.success('登录成功！');
         // 清除 URL 中的 code 参数
         window.history.replaceState({}, document.title, window.location.pathname);

@@ -280,8 +280,17 @@ router.post('/login/douyin/callback', async (req: Request, res: Response) => {
 
     const accessToken = tokenData.data.access_token;
     const refreshTokenValue = tokenData.data.refresh_token;
-    const openId = tokenData.data.open_id;
+    // 兼容抽音 API 返回 open_id 或 openid 两种格式
+    const openId = tokenData.data.open_id || tokenData.data.openid;
     const expiresIn = tokenData.data.expires_in;
+
+    if (!openId) {
+      console.error('抽音 OAuth 返回数据缺少 openId:', JSON.stringify(tokenData.data));
+      return res.status(400).json({
+        success: false,
+        error: '获取抽音用户 ID 失败',
+      });
+    }
 
     // 2. 获取抖音用户信息
     const userInfoResponse = await axios.get('https://open.douyin.com/oauth/userinfo/', {
