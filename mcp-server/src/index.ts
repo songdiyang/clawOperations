@@ -82,13 +82,13 @@ const tools = [
   },
   {
     name: 'publish_video',
-    description: '发布视频到抖音平台。可以立即发布或设置定时发布。',
+    description: '发布已有视频到抖音平台。注意：需要提供真实存在的视频文件路径。如果用户要求「AI生成并发布」，请使用 ai_create_and_publish 工具。',
     inputSchema: {
       type: 'object' as const,
       properties: {
         videoPath: {
           type: 'string',
-          description: '视频文件路径或视频ID',
+          description: '真实存在的视频文件绝对路径（如 /path/to/video.mp4）或视频ID',
         },
         title: {
           type: 'string',
@@ -148,18 +148,18 @@ const tools = [
   },
   {
     name: 'ai_create_and_publish',
-    description: 'AI 一键创作并发布：根据需求自动生成内容并发布到抖音。这是一个完整的工作流，包括需求分析、内容生成、文案生成和发布。',
+    description: '【推荐】AI 一键创作并发布：根据文字需求自动生成视频/图片并发布到抖音。当用户说“发布一个XX视频”、“创作并发布”、“生成并发布”时，应使用此工具。完整工作流：需求分析 → AI生成视频/图片 → 文案生成 → 发布。',
     inputSchema: {
       type: 'object' as const,
       properties: {
         requirement: {
           type: 'string',
-          description: '创作需求描述',
+          description: '创作需求描述，例如：“生成一个可爱小猫的视频”、“制作美食探店vlog”等',
         },
         contentType: {
           type: 'string',
           enum: ['auto', 'image', 'video'],
-          description: '内容类型偏好',
+          description: '内容类型偏好：auto自动判断，image图片，video视频',
           default: 'auto',
         },
         scheduleTime: {
