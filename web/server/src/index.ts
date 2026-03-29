@@ -29,6 +29,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // 参考图等文件服务（从项目根目录）
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+// AI 生成的内容文件服务（视频/图片）
+app.use('/generated', express.static(path.join(process.cwd(), 'generated')));
 
 // API 路由
 app.use('/api/user', userRoutes);

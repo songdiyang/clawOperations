@@ -179,7 +179,8 @@ export class DoubaoClient {
       return {
         type: 'image',
         localPath,
-        previewUrl: imageUrl,
+        // 使用本地 URL 作为预览地址，避免豆包 URL 过期
+        previewUrl: `/generated/${fileName}`,
         metadata: {
           width: parseInt(request.size?.split('x')[0] || '1024'),
           height: parseInt(request.size?.split('x')[1] || '1024'),
@@ -277,7 +278,8 @@ export class DoubaoClient {
       return {
         type: 'video',
         localPath,
-        previewUrl: result.content.video_url,
+        // 使用本地 URL 作为预览地址，避免豆包 URL 过期
+        previewUrl: `/generated/${fileName}`,
         taskId,
         metadata: {
           duration: result.duration,
