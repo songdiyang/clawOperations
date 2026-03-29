@@ -16,11 +16,10 @@ import {
   AlignCenterOutlined,
   AlignRightOutlined,
   FontSizeOutlined,
-  BgColorsOutlined,
 } from '@ant-design/icons';
 import { ImageItem, ImageTextStyle } from '../../../../../src/models/types';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 const { TextArea } = Input;
 
 interface ImageStyleEditorProps {

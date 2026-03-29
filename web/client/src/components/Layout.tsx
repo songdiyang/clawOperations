@@ -284,11 +284,32 @@ const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick, 
               background: '#fff',
               borderRadius: 8,
               padding: 16,
-              minHeight: 'calc(100vh - 140px)',
+              minHeight: 'calc(100vh - 180px)',
               border: '1px solid #ebeef2',
             }}
           >
             {children}
+          </div>
+          
+          {/* 页脚备案信息 */}
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '16px 0 8px',
+              fontSize: 12,
+              color: '#9ca3af',
+            }}
+          >
+            <a 
+              href="http://beian.miit.gov.cn/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              style={{ color: '#9ca3af', textDecoration: 'none' }}
+              onMouseEnter={(e) => e.currentTarget.style.color = '#1677ff'}
+              onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+            >
+              鄂ICP备2024068122号-3
+            </a>
           </div>
         </Content>
       </Layout>

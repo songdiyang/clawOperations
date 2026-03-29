@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, Typography, Space, Button } from 'antd';
+import { Modal, Button } from 'antd';
 import {
   LeftOutlined,
   RightOutlined,
@@ -7,7 +7,7 @@ import {
 } from '@ant-design/icons';
 import { ImageItem } from '../../../../../src/models/types';
 
-const { Text } = Typography;
+// Text reserved for future use
 
 interface ImageTextPreviewProps {
   images: ImageItem[];

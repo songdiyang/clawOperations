@@ -323,11 +323,14 @@ const AuthConfig: React.FC = () => {
                 name="redirectUri"
                 rules={[
                   { required: true, message: '请输入 Redirect URI' },
-                  { type: 'url', message: '请输入有效的 URL 地址' },
+                  { 
+                    pattern: /^https?:\/\/[\w.-]+(?:\.[\w.-]+)+(?:[\/\w.-]*)*\/?$/,
+                    message: '请输入有效的 URL 地址' 
+                  },
                 ]}
                 tooltip="OAuth 回调地址，需在抖音开放平台配置"
               >
-                <Input placeholder="https://your-domain.com/callback" />
+                <Input placeholder="https://your-domain.com" />
               </Form.Item>
 
               <Divider>Token 配置（可选）</Divider>

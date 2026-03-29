@@ -9,7 +9,6 @@ import {
   Space,
   Progress,
   Collapse,
-  List,
   Typography,
   Alert,
   Button,
@@ -26,11 +25,10 @@ import {
   BulbOutlined,
   ClockCircleOutlined,
   TagOutlined,
-  CopyOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 const { Panel } = Collapse;
 
 // 问题分类映射
@@ -146,7 +144,6 @@ const IssueItem: React.FC<{
   onCopy?: (text: string) => void 
 }> = ({ issue, onCopy }) => {
   const severity = SEVERITY_MAP[issue.severity];
-  const category = CATEGORY_MAP[issue.category];
 
   return (
     <div

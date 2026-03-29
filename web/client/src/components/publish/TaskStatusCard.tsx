@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Tag, Space, Button, Typography, Tooltip, Progress, Collapse } from 'antd';
+import { Card, Tag, Space, Button, Typography, Tooltip, Collapse } from 'antd';
 import {
   ClockCircleOutlined,
   CheckCircleOutlined,

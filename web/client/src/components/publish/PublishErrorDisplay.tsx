@@ -48,6 +48,11 @@ export interface PublishResultExtended {
   uploadedVideoId?: string;
   friendlyMessage?: string;
   suggestion?: string;
+  originalParams?: {
+    videoPath: string;
+    options: unknown;
+    isRemoteUrl: boolean;
+  };
 }
 
 interface PublishErrorDisplayProps {
