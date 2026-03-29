@@ -19,14 +19,16 @@
 - [web/client/src/pages/AICreator.tsx](file://web/client/src/pages/AICreator.tsx)
 - [src/api/ai/doubao-client.ts](file://src/api/ai/doubao-client.ts)
 - [src/services/ai-publish-service.ts](file://src/services/ai-publish-service.ts)
+- [web/client/src/components/ai-creator/TemplateSelector.tsx](file://web/client/src/components/ai-creator/TemplateSelector.tsx)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 更新Doubao AI视频生成服务API端点从/videos/generations到/contents/generations/tasks
-- 新增任务驱动的视频生成架构，支持异步状态跟踪
-- 超时时间从30秒增加到5分钟，增强错误处理机制
-- 更新AI服务组件架构图以反映新的API结构
+- 内容生成器支持参考图像选项，GenerateOptions接口新增referenceImageUrl字段
+- ContentGenerator.generate方法现在接受可选的参考图像URL参数
+- Doubao AI客户端的generateVideo方法支持referenceImageUrl选项
+- 前端模板选择器新增参考图像上传功能
+- 后端API新增参考图像上传和模板管理功能
 
 ## 目录
 1. [项目概述](#项目概述)
@@ -51,6 +53,7 @@ AI内容生成系统是一个基于抖音（TikTok）平台的智能内容创作
 - **前后端分离**：采用React前端和Node.js后端架构
 - **企业级配置**：支持环境变量配置和多种AI服务集成
 - **任务驱动架构**：支持异步任务处理和状态跟踪
+- **参考图像支持**：新增参考图像功能，支持基于参考图的内容生成
 
 **章节来源**
 - [README.md:1-152](file://README.md#L1-L152)
@@ -65,39 +68,48 @@ subgraph "前端应用 (web/client)"
 A[React前端应用]
 B[Ant Design UI组件]
 C[API客户端]
+D[模板选择器]
+E[参考图像上传]
 end
 subgraph "后端服务 (web/server)"
-D[Express服务器]
-E[路由控制器]
-F[业务逻辑层]
+F[Express服务器]
+G[路由控制器]
+H[业务逻辑层]
+I[模板管理]
+J[参考图像处理]
 end
 subgraph "核心库 (src)"
-G[发布管理器]
-H[认证模块]
-I[发布服务]
-J[定时服务]
+K[发布管理器]
+L[认证模块]
+M[发布服务]
+N[定时服务]
+O[内容生成器]
+P[AI服务组件]
 end
 subgraph "AI服务"
-K[需求分析器]
-L[内容生成器]
-M[文案生成器]
-N[Doubao AI客户端]
-O[AI发布编排服务]
+Q[需求分析器]
+R[内容生成器]
+S[文案生成器]
+T[Doubao AI客户端]
+U[AI发布编排服务]
 end
 A --> D
 B --> A
-C --> D
+C --> F
 D --> E
-E --> F
 F --> G
 G --> H
-G --> I
-G --> J
-F --> K
-F --> L
-F --> M
-F --> N
-F --> O
+H --> K
+K --> L
+K --> M
+K --> N
+H --> O
+O --> P
+P --> Q
+P --> R
+P --> S
+P --> T
+P --> U
 ```
 
 **图表来源**
@@ -173,7 +185,7 @@ class ContentGenerator {
 -string imageSize
 -number videoDuration
 -string videoResolution
-+generate(analysis, onProgress) GeneratedContent
++generate(analysis, options) GeneratedContent
 +checkTaskStatus(taskId) TaskStatus
 }
 class CopywritingGenerator {
@@ -236,44 +248,60 @@ AIPublishService --> PublishService : "使用"
 
 ## 架构概览
 
-系统采用分层架构设计，实现了清晰的关注点分离，现已支持任务驱动的异步处理：
+系统采用分层架构设计，实现了清晰的关注点分离，现已支持任务驱动的异步处理和参考图像功能：
 
 ```mermaid
 graph TB
 subgraph "表现层"
 UI[React前端界面]
 API[RESTful API]
+TemplateSelector[模板选择器]
+ReferenceImageUploader[参考图像上传]
 end
 subgraph "控制层"
 AuthCtrl[认证控制器]
 AICtrl[AI创作控制器]
 PubCtrl[发布控制器]
+TemplateCtrl[模板控制器]
+RefImgCtrl[参考图像控制器]
 end
 subgraph "业务层"
 AIPubService[AI发布服务]
 PubService[发布服务]
 SchedulerService[定时服务]
 TaskManager[任务管理器]
+TemplateService[模板服务]
+RefImgService[参考图像服务]
 end
 subgraph "数据访问层"
 DouyinClient[抖音API客户端]
 DoubaoClient[豆包AI客户端]
 DeepSeekClient[DeepSeek客户端]
+TemplateStorage[模板存储]
+RefImgStorage[参考图像存储]
 end
 UI --> API
 API --> AuthCtrl
 API --> AICtrl
 API --> PubCtrl
+API --> TemplateCtrl
+API --> RefImgCtrl
 AuthCtrl --> AIPubService
 AICtrl --> AIPubService
 PubCtrl --> PubService
+TemplateCtrl --> TemplateService
+RefImgCtrl --> RefImgService
 AIPubService --> PubService
 AIPubService --> TaskManager
+AIPubService --> TemplateService
+AIPubService --> RefImgService
 PubService --> SchedulerService
 AIPubService --> DoubaoClient
 AIPubService --> DeepSeekClient
 PubService --> DouyinClient
 TaskManager --> DoubaoClient
+TemplateService --> TemplateStorage
+RefImgService --> RefImgStorage
 ```
 
 **图表来源**
@@ -398,7 +426,7 @@ SchedulerService --> PublishService : "调用"
 
 ### AI创作工作流
 
-AI创作系统实现了从需求分析到内容发布的完整自动化流程，现已支持任务驱动的异步处理：
+AI创作系统实现了从需求分析到内容发布的完整自动化流程，现已支持任务驱动的异步处理和参考图像功能：
 
 ```mermaid
 sequenceDiagram
@@ -414,6 +442,7 @@ API->>Analyzer : 分析用户输入
 Analyzer-->>API : 返回分析结果
 API->>Generator : 生成内容
 Generator->>DoubaoClient : 创建视频生成任务
+Note over Generator,DoubaoClient : 参考图像支持
 DoubaoClient->>DoubaoClient : 轮询任务状态
 DoubaoClient-->>Generator : 返回生成结果
 Generator-->>API : 返回生成内容
@@ -431,7 +460,7 @@ Publisher-->>API : 返回发布结果
 - [src/services/ai/copywriting-generator.ts:54-74](file://src/services/ai/copywriting-generator.ts#L54-L74)
 - [src/api/ai/doubao-client.ts:205-257](file://src/api/ai/doubao-client.ts#L205-L257)
 
-**更新** Doubao AI客户端已从直接生成模式迁移到任务驱动模式，支持异步状态跟踪和更长的超时时间。
+**更新** Doubao AI客户端已从直接生成模式迁移到任务驱动模式，支持异步状态跟踪和更长的超时时间。现在支持参考图像功能，用户可以上传参考图像来指导内容生成。
 
 AI工作流的关键特性：
 - 支持自动内容类型选择
@@ -439,6 +468,7 @@ AI工作流的关键特性：
 - 错误处理和重试机制
 - 与发布系统的无缝集成
 - 任务状态跟踪和管理
+- **新增**：参考图像支持，增强内容生成的个性化定制
 
 **章节来源**
 - [web/server/src/routes/ai.ts:1-323](file://web/server/src/routes/ai.ts#L1-L323)
@@ -500,7 +530,7 @@ DoubaoClient --> Content : "使用"
 - [src/api/ai/doubao-client.ts:85-123](file://src/api/ai/doubao-client.ts#L85-L123)
 - [src/api/ai/doubao-client.ts:41-80](file://src/api/ai/doubao-client.ts#L41-L80)
 
-**更新** Doubao AI客户端已从/videos/generations端点迁移到/contents/generations/tasks端点，采用内容驱动的请求结构，支持异步任务处理。
+**更新** Doubao AI客户端已从/videos/generations端点迁移到/contents/generations/tasks端点，采用内容驱动的请求结构，支持异步任务处理。现在支持参考图像功能，通过在content数组中添加image_url类型的内容来实现。
 
 Doubao客户端的关键变更：
 - **API端点迁移**：从/videos/generations到/contents/generations/tasks
@@ -508,10 +538,50 @@ Doubao客户端的关键变更：
 - **任务驱动模式**：支持异步任务创建和状态轮询
 - **超时时间增加**：从30秒增加到5分钟（300秒）
 - **增强错误处理**：支持任务状态检查和错误信息追踪
+- **新增**：参考图像支持，通过image_url类型的内容实现
 
 **章节来源**
 - [src/api/ai/doubao-client.ts:1-362](file://src/api/ai/doubao-client.ts#L1-L362)
 - [config/default.ts:50-59](file://config/default.ts#L50-L59)
+
+### 参考图像功能
+
+系统新增了完整的参考图像功能，允许用户上传参考图像来指导AI内容生成：
+
+```mermaid
+sequenceDiagram
+participant User as "用户"
+participant TemplateSelector as "模板选择器"
+participant RefImgUploader as "参考图像上传器"
+participant RefImgAPI as "参考图像API"
+participant TemplateService as "模板服务"
+User->>TemplateSelector : 选择模板
+TemplateSelector->>RefImgUploader : 上传参考图像
+RefImgUploader->>RefImgAPI : 上传图片文件
+RefImgAPI-->>RefImgUploader : 返回图片URL
+RefImgUploader-->>TemplateSelector : 显示预览
+TemplateSelector->>TemplateService : 创建模板(含参考图像)
+TemplateService-->>User : 返回模板
+User->>TemplateService : 使用模板生成内容
+TemplateService->>RefImgAPI : 获取参考图像URL
+RefImgAPI-->>TemplateService : 返回图片URL
+TemplateService-->>User : 返回生成内容
+```
+
+**图表来源**
+- [web/client/src/components/ai-creator/TemplateSelector.tsx:194-220](file://web/client/src/components/ai-creator/TemplateSelector.tsx#L194-L220)
+- [web/server/src/routes/ai.ts:680-711](file://web/server/src/routes/ai.ts#L680-L711)
+
+参考图像功能的关键特性：
+- **前端上传**：支持图片文件上传，限制5MB以内
+- **实时预览**：上传后显示参考图像预览
+- **模板集成**：参考图像可保存到模板中
+- **任务关联**：生成任务时可使用参考图像
+- **安全存储**：参考图像存储在/uploads/reference-images目录
+
+**章节来源**
+- [web/client/src/components/ai-creator/TemplateSelector.tsx:1-474](file://web/client/src/components/ai-creator/TemplateSelector.tsx#L1-L474)
+- [web/server/src/routes/ai.ts:680-711](file://web/server/src/routes/ai.ts#L680-L711)
 
 ## 依赖关系分析
 
@@ -524,6 +594,7 @@ Axios[Axios HTTP客户端]
 Winston[Winston日志库]
 NodeCron[Node-Cron定时器]
 Dotenv[Dotenv环境变量]
+Multer[Multer文件上传]
 end
 subgraph "核心模块"
 Index[src/index.ts]
@@ -538,6 +609,8 @@ Logger[src/utils/logger.ts]
 AIPublish[src/services/ai-publish-service.ts]
 DoubaoClient[src/api/ai/doubao-client.ts]
 ContentGen[src/services/ai/content-generator.ts]
+TemplateService[src/services/ai/template-service.ts]
+RefImgService[src/services/ai/ref-img-service.ts]
 end
 subgraph "AI服务"
 ReqAnalyzer[src/services/ai/requirement-analyzer.ts]
@@ -547,9 +620,11 @@ subgraph "Web层"
 Server[web/server/src/index.ts]
 Routes[web/server/src/routes/ai.ts]
 Client[web/client/src/pages/AICreator.tsx]
+TemplateSelector[web/client/src/components/ai-creator/TemplateSelector.tsx]
 end
 Axios --> Auth
 Axios --> DoubaoClient
+Axios --> RefImgService
 Winston --> Logger
 NodeCron --> Scheduler
 Dotenv --> Config
@@ -562,6 +637,8 @@ Scheduler --> Publish
 AIPublish --> DoubaoClient
 AIPublish --> ContentGen
 AIPublish --> Copywriter
+AIPublish --> TemplateService
+AIPublish --> RefImgService
 ReqAnalyzer --> Logger
 ContentGen --> Logger
 Copywriter --> Logger
@@ -570,7 +647,10 @@ Routes --> ReqAnalyzer
 Routes --> ContentGen
 Routes --> Copywriter
 Routes --> Publish
+Routes --> TemplateService
+Routes --> RefImgService
 Client --> Server
+TemplateSelector --> Server
 ```
 
 **图表来源**
@@ -604,6 +684,13 @@ Client --> Server
 - **状态轮询优化**：合理的轮询间隔（3秒）平衡响应性和资源消耗
 - **超时管理**：5分钟超时时间适应视频生成的较长处理时间
 - **错误重试机制**：支持任务状态查询和错误信息追踪
+- **参考图像优化**：参考图像上传采用分块传输，支持大文件处理
+
+### 参考图像处理优化
+- **文件大小限制**：5MB限制防止过大文件影响性能
+- **预览生成**：使用URL.createObjectURL生成预览，避免内存占用
+- **并发上传**：支持多模板同时上传参考图像
+- **缓存策略**：参考图像URL缓存减少重复上传
 
 ## 故障排除指南
 
@@ -620,6 +707,7 @@ Client --> Server
 - 验证网络连接和带宽
 - 查看AI服务的配额限制
 - **新增**：检查任务状态轮询是否正常工作
+- **新增**：验证参考图像URL的有效性
 
 **视频上传失败**
 - 确认文件格式和大小限制
@@ -637,6 +725,13 @@ Client --> Server
 - **新增**：验证超时时间配置（5分钟）
 - **新增**：查看任务错误信息和状态码
 
+**参考图像问题**
+- **新增**：检查图片文件格式（仅支持图片）
+- **新增**：验证图片大小不超过5MB限制
+- **新增**：确认参考图像URL可访问
+- **新增**：检查模板中参考图像字段的正确传递
+- **新增**：验证参考图像存储目录的写入权限
+
 **章节来源**
 - [src/utils/logger.ts:1-61](file://src/utils/logger.ts#L1-L61)
 - [src/services/publish-service.ts:165-172](file://src/services/publish-service.ts#L165-L172)
@@ -653,6 +748,8 @@ AI内容生成系统是一个功能完整、架构清晰的现代化内容创作
 3. **扩展性强**：模块化设计便于功能扩展和维护
 4. **用户体验好**：提供直观的前端界面和流畅的操作体验
 5. **任务驱动架构**：支持异步处理和状态跟踪，提升系统可靠性
+6. **个性化定制**：新增参考图像功能，支持基于参考图的内容生成
+7. **模板化管理**：支持模板创建和管理，提高内容生成效率
 
 ### 发展方向
 
@@ -661,7 +758,9 @@ AI内容生成系统是一个功能完整、架构清晰的现代化内容创作
 3. **自动化程度提升**：实现更智能的内容推荐和优化
 4. **数据分析能力**：增加内容效果分析和优化建议
 5. **任务管理优化**：进一步完善异步任务处理和状态跟踪机制
+6. **参考图像优化**：支持更多类型的参考图像和高级定制功能
+7. **模板生态建设**：建立模板分享和社区功能
 
-**更新** 系统已成功迁移到Doubao AI的最新API架构，采用任务驱动模式处理视频生成，显著提升了系统的稳定性和可靠性。
+**更新** 系统已成功迁移到Doubao AI的最新API架构，采用任务驱动模式处理视频生成，显著提升了系统的稳定性和可靠性。新增的参考图像功能进一步增强了内容生成的个性化和定制化能力，为内容创作者提供了更强大的工具。
 
 该系统为内容创作者和营销团队提供了一个强大而易用的工具，有助于在数字内容领域保持竞争优势。

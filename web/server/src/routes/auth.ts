@@ -126,12 +126,26 @@ router.post('/callback', optionalAuthMiddleware, async (req: Request, res: Respo
     
     // 如果已登录，保存 Token 到用户配置
     if (req.userId) {
-      userAuthConfigService.updateTokens(req.userId, {
-        accessToken: tokenInfo.accessToken,
-        refreshToken: tokenInfo.refreshToken,
-        openId: tokenInfo.openId,
-        expiresAt: tokenInfo.expiresAt,
-      });
+      // 同时保存应用配置（从全局配置获取），确保用户配置完整
+      const globalConfig = getPublisherConfig();
+      if (globalConfig) {
+        userAuthConfigService.upsertConfig(req.userId, {
+          clientKey: globalConfig.clientKey,
+          clientSecret: globalConfig.clientSecret,
+          redirectUri: globalConfig.redirectUri,
+          accessToken: tokenInfo.accessToken,
+          refreshToken: tokenInfo.refreshToken,
+          openId: tokenInfo.openId,
+          expiresAt: tokenInfo.expiresAt,
+        });
+      } else {
+        userAuthConfigService.updateTokens(req.userId, {
+          accessToken: tokenInfo.accessToken,
+          refreshToken: tokenInfo.refreshToken,
+          openId: tokenInfo.openId,
+          expiresAt: tokenInfo.expiresAt,
+        });
+      }
     }
     appConfigService.setDouyinConfig({
       accessToken: tokenInfo.accessToken,
