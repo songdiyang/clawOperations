@@ -14,7 +14,7 @@ const API_BASE_URL = process.env.CLAWOPS_API_URL || 'http://localhost:3001/api';
 // API 客户端
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 120000, // AI 创作可能需要较长时间
+  timeout: 600000, // AI 视频生成需要 3-5 分钟，设置 10 分钟超时
   headers: {
     'Content-Type': 'application/json',
   },
