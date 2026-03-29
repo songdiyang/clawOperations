@@ -20,7 +20,10 @@ import {
   Modal,
   Form,
   Select,
+  Upload,
+  Image,
 } from 'antd';
+import type { UploadFile, UploadProps } from 'antd';
 import {
   AppstoreOutlined,
   DeleteOutlined,
@@ -28,6 +31,8 @@ import {
   PlusOutlined,
   TagOutlined,
   FireOutlined,
+  PictureOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons';
 import { aiApi } from '../../api/client';
 
@@ -43,6 +48,7 @@ interface Template {
   tags: string[];
   usageCount: number;
   updatedAt: string;
+  referenceImageUrl?: string;  // 参考图 URL
 }
 
 interface TemplateSelectorProps {
@@ -71,6 +77,8 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
   const [searchText, setSearchText] = useState('');
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [form] = Form.useForm();
+  const [referenceImageFile, setReferenceImageFile] = useState<UploadFile | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>('');
 
   // 加载模板列表
   const loadTemplates = async () => {
@@ -138,18 +146,32 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
   // 创建模板
   const handleCreate = async (values: any) => {
     try {
+      // 如果有参考图，先上传图片
+      let referenceImageUrl: string | undefined;
+      if (referenceImageFile?.originFileObj) {
+        const formData = new FormData();
+        formData.append('file', referenceImageFile.originFileObj);
+        const uploadResponse = await aiApi.uploadReferenceImage(formData);
+        if (uploadResponse.data.success) {
+          referenceImageUrl = uploadResponse.data.data.url;
+        }
+      }
+
       const response = await aiApi.createTemplate({
         name: values.name,
         description: values.description,
         requirement: values.requirement,
         contentTypePreference: values.contentTypePreference,
         tags: values.tags || [],
+        referenceImageUrl,
       });
       
       if (response.data.success) {
         message.success('模板创建成功');
         setCreateModalVisible(false);
         form.resetFields();
+        setReferenceImageFile(null);
+        setPreviewUrl('');
         loadTemplates();
       }
     } catch (error: any) {
@@ -164,7 +186,43 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
       contentTypePreference: 'auto',
       tags: [],
     });
+    setReferenceImageFile(null);
+    setPreviewUrl('');
     setCreateModalVisible(true);
+  };
+
+  // 参考图上传配置
+  const uploadProps: UploadProps = {
+    beforeUpload: (file) => {
+      const isImage = file.type.startsWith('image/');
+      if (!isImage) {
+        message.error('只能上传图片文件');
+        return false;
+      }
+      const isLt5M = file.size / 1024 / 1024 < 5;
+      if (!isLt5M) {
+        message.error('图片大小不能超过 5MB');
+        return false;
+      }
+      // 生成预览 URL
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
+      setReferenceImageFile({
+        uid: file.uid,
+        name: file.name,
+        status: 'done',
+        originFileObj: file,
+      } as UploadFile);
+      return false; // 阻止自动上传
+    },
+    showUploadList: false,
+    accept: 'image/*',
+  };
+
+  // 移除参考图
+  const handleRemoveReferenceImage = () => {
+    setReferenceImageFile(null);
+    setPreviewUrl('');
   };
 
   return (
@@ -359,6 +417,41 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
               placeholder="输入标签并按回车添加"
               style={{ width: '100%' }}
             />
+          </Form.Item>
+          
+          {/* 参考图上传 */}
+          <Form.Item
+            label="参考图"
+            extra="上传参考图，AI 将根据此图生成相似风格的内容"
+          >
+            {previewUrl ? (
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <Image
+                  src={previewUrl}
+                  alt="参考图预览"
+                  style={{ maxWidth: 200, maxHeight: 150, borderRadius: 8 }}
+                />
+                <Button
+                  type="text"
+                  danger
+                  size="small"
+                  icon={<CloseCircleOutlined />}
+                  onClick={handleRemoveReferenceImage}
+                  style={{ 
+                    position: 'absolute', 
+                    top: -8, 
+                    right: -8, 
+                    background: '#fff',
+                    borderRadius: '50%',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                  }}
+                />
+              </div>
+            ) : (
+              <Upload {...uploadProps}>
+                <Button icon={<PictureOutlined />}>上传参考图</Button>
+              </Upload>
+            )}
           </Form.Item>
         </Form>
       </Modal>

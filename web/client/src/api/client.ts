@@ -412,6 +412,12 @@ export const aiApi = {
 
   // ==================== 模板管理 ====================
   
+  /** 上传参考图 */
+  uploadReferenceImage: (formData: FormData) => 
+    client.post('/ai/upload-reference-image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  
   /** 创建模板 */
   createTemplate: (template: {
     name: string;
@@ -419,6 +425,7 @@ export const aiApi = {
     requirement: string;
     contentTypePreference?: 'image' | 'video' | 'auto';
     tags?: string[];
+    referenceImageUrl?: string;
   }) => client.post('/ai/templates', template),
   
   /** 获取模板列表 */

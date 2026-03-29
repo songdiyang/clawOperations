@@ -3,6 +3,9 @@
  */
 
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { AIPublishService } from '../../../../src/services/ai-publish-service';
 import { RequirementAnalyzer } from '../../../../src/services/ai/requirement-analyzer';
 import { ContentGenerator } from '../../../../src/services/ai/content-generator';
@@ -13,6 +16,34 @@ import { appConfigService } from '../services/app-config-service';
 import { creationTaskService } from '../services/creation-task-service';
 
 const router = Router();
+
+// 配置参考图上传
+const referenceImageStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(process.cwd(), 'uploads', 'reference-images');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const filename = `ref_${Date.now()}_${Math.random().toString(36).substring(7)}${ext}`;
+    cb(null, filename);
+  },
+});
+
+const referenceImageUpload = multer({
+  storage: referenceImageStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('只能上传图片文件'));
+    }
+  },
+});
 
 // 创建服务实例（懒加载）
 let aiPublishService: AIPublishService | null = null;
@@ -647,11 +678,44 @@ router.get('/history/:id', async (req: Request, res: Response) => {
 // ==================== 模板管理 API ====================
 
 /**
+ * POST /api/ai/upload-reference-image - 上传参考图
+ */
+router.post('/upload-reference-image', referenceImageUpload.single('file'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: '请上传图片文件',
+      });
+    }
+
+    // 返回文件 URL
+    const url = `/uploads/reference-images/${req.file.filename}`;
+    
+    res.json({
+      success: true,
+      data: {
+        url,
+        filename: req.file.filename,
+        originalName: req.file.originalname,
+        size: req.file.size,
+      },
+    });
+  } catch (error: any) {
+    console.error('上传参考图失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || '上传失败',
+    });
+  }
+});
+
+/**
  * POST /api/ai/templates - 创建模板
  */
 router.post('/templates', async (req: Request, res: Response) => {
   try {
-    const { name, description, requirement, contentTypePreference, tags } = req.body;
+    const { name, description, requirement, contentTypePreference, tags, referenceImageUrl } = req.body;
     
     if (!name || !requirement) {
       return res.status(400).json({
@@ -666,6 +730,7 @@ router.post('/templates', async (req: Request, res: Response) => {
       requirement,
       contentTypePreference,
       tags: tags || [],
+      referenceImageUrl,
     });
     
     res.json({

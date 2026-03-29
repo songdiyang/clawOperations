@@ -210,6 +210,7 @@ class CreationTaskService {
       requirement: data.requirement,
       contentTypePreference: data.contentTypePreference,
       tags: data.tags || [],
+      referenceImageUrl: data.referenceImageUrl,
       usageCount: 0,
       createdAt: timestamp,
       updatedAt: timestamp,

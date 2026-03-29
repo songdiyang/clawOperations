@@ -385,6 +385,8 @@ export interface CreationTemplate {
   contentTypePreference?: 'image' | 'video' | 'auto';
   /** 标签 */
   tags: string[];
+  /** 参考图 URL */
+  referenceImageUrl?: string;
   /** 使用次数 */
   usageCount: number;
   /** 创建时间 */
