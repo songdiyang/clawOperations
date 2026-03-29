@@ -156,19 +156,30 @@ export class AIPublishService {
 
       // 步骤 4: 发布（如果配置了自动发布）
       let publishResult;
+      let publishError: string | undefined;
+      
       if (config?.autoPublish !== false && this.publishService) {
-        this.updateTaskStatus(taskId, {
-          status: 'publishing',
-          progress: 85,
-          currentStep: '正在发布到抖音...',
-        }, onProgress);
+        // 检查内容类型 - 当前仅支持视频发布
+        if (content.type === 'image') {
+          publishError = '图片生成成功，但当前不支持图片一键发布到抖音。您可以手动下载图片后通过抖音 App 发布。';
+          this.updateTaskStatus(taskId, {
+            progress: 100,
+            currentStep: '图片生成成功（不支持自动发布）',
+          }, onProgress);
+        } else {
+          this.updateTaskStatus(taskId, {
+            status: 'publishing',
+            progress: 85,
+            currentStep: '正在发布到抖音...',
+          }, onProgress);
 
-        publishResult = await this.publish(content, copywriting, config);
+          publishResult = await this.publish(content, copywriting, config);
 
-        this.updateTaskStatus(taskId, {
-          progress: 100,
-          currentStep: publishResult?.success ? '发布成功' : '发布失败',
-        }, onProgress);
+          this.updateTaskStatus(taskId, {
+            progress: 100,
+            currentStep: publishResult?.success ? '发布成功' : '发布失败',
+          }, onProgress);
+        }
       }
 
       // 完成
@@ -179,6 +190,8 @@ export class AIPublishService {
         content,
         copywriting,
         publishResult,
+        // 如果是图片且无法发布，添加提示信息
+        ...(publishError ? { error: publishError, success: true } : {}),
       };
 
       this.updateTaskStatus(taskId, {
@@ -250,6 +263,7 @@ export class AIPublishService {
 
   /**
    * 发布内容
+   * 注意：当前仅支持视频发布到抖音，图片发布尚不支持
    */
   async publish(
     content: GeneratedContent,
@@ -258,6 +272,11 @@ export class AIPublishService {
   ): Promise<AIPublishResult['publishResult']> {
     if (!this.publishService) {
       throw new Error('发布服务未初始化，请先调用 initPublishService');
+    }
+
+    // 检查内容类型 - 当前仅支持视频发布
+    if (content.type === 'image') {
+      throw new Error('图片生成成功，但当前不支持图片一键发布到抖音。您可以手动下载图片后通过抖音 App 发布。');
     }
 
     // 构建发布选项

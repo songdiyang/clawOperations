@@ -293,6 +293,8 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
         
         if (response.data.success) {
           const data = response.data.data;
+          // 检查是否为图片类型（当前不支持图片自动发布）
+          const isImageContent = data.content?.type === 'image';
           return JSON.stringify({
             success: true,
             taskId: data.taskId,
@@ -300,6 +302,11 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
             content: data.content,
             copywriting: data.copywriting,
             publishResult: data.publishResult,
+            // 如果是图片，添加提示
+            ...(isImageContent && !data.publishResult ? {
+              note: '图片已生成成功。当前抖音 API 不支持图片一键发布，请手动下载图片后通过抖音 App 发布。',
+              imageUrl: data.content?.previewUrl || data.content?.localPath,
+            } : {}),
           }, null, 2);
         }
         return JSON.stringify({ success: false, error: response.data.error });

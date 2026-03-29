@@ -10,6 +10,14 @@ import { RequirementAnalysis, GeneratedCopywriting } from '../../models/types';
 
 const logger = createLogger('DeepSeekClient');
 
+// 防御性配置检查，确保 AI_CONFIG.DEEPSEEK 存在
+const DEEPSEEK_CONFIG = AI_CONFIG?.DEEPSEEK ?? {
+  BASE_URL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
+  MODEL: 'deepseek-chat',
+  MAX_TOKENS: 4096,
+  TEMPERATURE: 0.7,
+};
+
 /**
  * DeepSeek 聊天消息
  */
@@ -61,11 +69,11 @@ export class DeepSeekClient {
   constructor(apiKey?: string) {
     const key = apiKey || process.env.DEEPSEEK_API_KEY;
     if (!key) {
-      throw new Error('DeepSeek API Key 未配置，请设置 DEEPSEEK_API_KEY 环境变量');
+      throw new Error('DeepSeek API Key 未配置。请在系统设置中配置 DEEPSEEK_API_KEY，或设置环境变量。');
     }
 
     this.client = axios.create({
-      baseURL: AI_CONFIG.DEEPSEEK.BASE_URL,
+      baseURL: DEEPSEEK_CONFIG.BASE_URL,
       headers: {
         'Authorization': `Bearer ${key}`,
         'Content-Type': 'application/json',
@@ -73,9 +81,9 @@ export class DeepSeekClient {
       timeout: 60000, // 60 秒超时
     });
 
-    this.model = AI_CONFIG.DEEPSEEK.MODEL;
-    this.maxTokens = AI_CONFIG.DEEPSEEK.MAX_TOKENS;
-    this.temperature = AI_CONFIG.DEEPSEEK.TEMPERATURE;
+    this.model = DEEPSEEK_CONFIG.MODEL;
+    this.maxTokens = DEEPSEEK_CONFIG.MAX_TOKENS;
+    this.temperature = DEEPSEEK_CONFIG.TEMPERATURE;
 
     logger.info('DeepSeek 客户端初始化完成');
   }

@@ -13,6 +13,15 @@ import { GeneratedContent } from '../../models/types';
 
 const logger = createLogger('DoubaoClient');
 
+// 防御性配置检查，确保 AI_CONFIG.DOUBAO 存在
+const DOUBAO_CONFIG = AI_CONFIG?.DOUBAO ?? {
+  BASE_URL: process.env.DOUBAO_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3',
+  IMAGE_MODEL: process.env.DOUBAO_ENDPOINT_ID_IMAGE || '',
+  VIDEO_MODEL: process.env.DOUBAO_ENDPOINT_ID_VIDEO || '',
+  POLL_INTERVAL: 3000,
+  TASK_TIMEOUT: 5 * 60 * 1000,
+};
+
 /**
  * 图片生成请求
  */
@@ -93,11 +102,11 @@ export class DoubaoClient {
   constructor(apiKey?: string) {
     const key = apiKey || process.env.DOUBAO_API_KEY;
     if (!key) {
-      throw new Error('豆包 API Key 未配置，请设置 DOUBAO_API_KEY 环境变量');
+      throw new Error('豆包 API Key 未配置。请设置 DOUBAO_API_KEY 环境变量（火山引擎方舟 API Key）。');
     }
 
     this.client = axios.create({
-      baseURL: AI_CONFIG.DOUBAO.BASE_URL,
+      baseURL: DOUBAO_CONFIG.BASE_URL,
       headers: {
         'Authorization': `Bearer ${key}`,
         'Content-Type': 'application/json',
@@ -105,10 +114,10 @@ export class DoubaoClient {
       timeout: 120000, // 2 分钟超时
     });
 
-    this.imageModel = AI_CONFIG.DOUBAO.IMAGE_MODEL;
-    this.videoModel = AI_CONFIG.DOUBAO.VIDEO_MODEL;
-    this.pollInterval = AI_CONFIG.DOUBAO.POLL_INTERVAL;
-    this.taskTimeout = AI_CONFIG.DOUBAO.TASK_TIMEOUT;
+    this.imageModel = DOUBAO_CONFIG.IMAGE_MODEL;
+    this.videoModel = DOUBAO_CONFIG.VIDEO_MODEL;
+    this.pollInterval = DOUBAO_CONFIG.POLL_INTERVAL;
+    this.taskTimeout = DOUBAO_CONFIG.TASK_TIMEOUT;
 
     // 设置输出目录
     this.outputDir = path.join(process.cwd(), 'generated');
@@ -136,7 +145,7 @@ export class DoubaoClient {
     }
   ): Promise<GeneratedContent> {
     if (!this.imageModel) {
-      throw new Error('图片生成模型未配置，请设置 DOUBAO_ENDPOINT_ID_IMAGE 环境变量');
+      throw new Error('图片生成模型未配置。请设置 DOUBAO_ENDPOINT_ID_IMAGE 环境变量（火山引擎图片生成接入点 ID）。');
     }
 
     logger.info('开始生成图片', { promptLength: prompt.length });
@@ -178,8 +187,16 @@ export class DoubaoClient {
         },
       };
     } catch (error: any) {
-      logger.error('图片生成失败', { error: error.message });
-      throw new Error(`图片生成失败: ${error.message}`);
+      logger.error('图片生成失败', { error: error.message, status: error.response?.status });
+      // 提供更准确的错误信息
+      if (error.response?.status === 400) {
+        const errorData = error.response?.data;
+        throw new Error(`豆包图片生成失败 (400): ${errorData?.error?.message || '请检查图片模型 ID 是否正确配置'}`);
+      }
+      if (error.response?.status === 403) {
+        throw new Error('豆包图片生成失败 (403): API Key 无权限或接入点未上线');
+      }
+      throw new Error(`豆包图片生成失败: ${error.message}`);
     }
   }
 
@@ -198,7 +215,7 @@ export class DoubaoClient {
     }
   ): Promise<GeneratedContent> {
     if (!this.videoModel) {
-      throw new Error('视频生成模型未配置，请设置 DOUBAO_ENDPOINT_ID_VIDEO 环境变量');
+      throw new Error('视频生成模型未配置。请设置 DOUBAO_ENDPOINT_ID_VIDEO 环境变量（火山引擎视频生成接入点 ID）。');
     }
 
     logger.info('开始生成视频', { 
@@ -268,8 +285,16 @@ export class DoubaoClient {
         },
       };
     } catch (error: any) {
-      logger.error('视频生成失败', { error: error.message });
-      throw new Error(`视频生成失败: ${error.message}`);
+      logger.error('视频生成失败', { error: error.message, status: error.response?.status });
+      // 提供更准确的错误信息
+      if (error.response?.status === 400) {
+        const errorData = error.response?.data;
+        throw new Error(`豆包视频生成失败 (400): ${errorData?.error?.message || '请检查视频模型 ID 是否正确配置'}`);
+      }
+      if (error.response?.status === 403) {
+        throw new Error('豆包视频生成失败 (403): API Key 无权限或接入点未上线');
+      }
+      throw new Error(`豆包视频生成失败: ${error.message}`);
     }
   }
 
