@@ -17,6 +17,8 @@ import {
   notification,
   Tooltip,
   Collapse,
+  Progress,
+  Segmented,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -30,8 +32,12 @@ import {
   ThunderboltOutlined,
   ExclamationCircleOutlined,
   InfoCircleOutlined,
+  RobotOutlined,
+  SyncOutlined,
+  VideoCameraOutlined,
+  PictureOutlined,
 } from '@ant-design/icons';
-import { publishApi } from '../api/client';
+import { publishApi, aiApi } from '../api/client';
 
 const { Text, Paragraph } = Typography;
 const { Panel } = Collapse;
@@ -63,18 +69,89 @@ interface Task {
   retryable?: boolean;
 }
 
+// AI 任务类型
+interface AITask {
+  taskId: string;
+  status: 'pending' | 'analyzing' | 'generating' | 'copywriting' | 'publishing' | 'completed' | 'failed';
+  progress: number;
+  currentStep: string;
+  createdAt: number;
+  updatedAt: number;
+  error?: string;
+  result?: {
+    success: boolean;
+    analysis?: {
+      contentType: 'image' | 'video';
+      theme: string;
+    };
+    content?: {
+      type: 'image' | 'video';
+      previewUrl?: string;
+      localPath?: string;
+    };
+  };
+}
+
+// 统一任务类型
+interface UnifiedTask {
+  taskId: string;
+  type: 'publish' | 'ai';
+  status: string;
+  time: string;
+  progress?: number;
+  currentStep?: string;
+  error?: string;
+  result?: any;
+  retryable?: boolean;
+  contentType?: 'image' | 'video';
+}
+
 const TaskList: React.FC = () => {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [publishTasks, setPublishTasks] = useState<Task[]>([]);
+  const [aiTasks, setAITasks] = useState<AITask[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'publish' | 'ai'>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // 合并两种任务为统一格式
+  const unifiedTasks: UnifiedTask[] = [
+    // AI 任务
+    ...aiTasks.map((t): UnifiedTask => ({
+      taskId: t.taskId,
+      type: 'ai',
+      status: t.status,
+      time: new Date(t.createdAt).toISOString(),
+      progress: t.progress,
+      currentStep: t.currentStep,
+      error: t.error,
+      result: t.result,
+      retryable: false,
+      contentType: t.result?.analysis?.contentType || t.result?.content?.type,
+    })),
+    // 发布任务
+    ...publishTasks.map((t): UnifiedTask => ({
+      taskId: t.taskId,
+      type: 'publish',
+      status: t.status,
+      time: t.scheduledTime,
+      error: t.result?.error,
+      result: t.result,
+      retryable: t.retryable,
+    })),
+  ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await publishApi.getTasks();
-      setTasks(response.data.data || []);
+      // 并行获取两种任务
+      const [publishRes, aiRes] = await Promise.all([
+        publishApi.getTasks().catch(() => ({ data: { data: [] } })),
+        aiApi.getTasks().catch(() => ({ data: { data: [] } })),
+      ]);
+      setPublishTasks(publishRes.data.data || []);
+      setAITasks(aiRes.data.data || []);
     } catch (error: any) {
       message.error(error.response?.data?.error || '获取任务列表失败');
     } finally {
@@ -84,9 +161,16 @@ const TaskList: React.FC = () => {
 
   useEffect(() => {
     fetchTasks();
-    const interval = setInterval(fetchTasks, 30000);
+    // AI 任务需要更频繁的刷新来显示进度
+    // 检查是否有进行中的 AI 任务
+    const hasActiveAITasks = aiTasks.some(t => 
+      ['pending', 'analyzing', 'generating', 'copywriting', 'publishing'].includes(t.status)
+    );
+    // 有进行中的 AI 任务时，每 3 秒刷新；否则每 30 秒刷新
+    const intervalMs = hasActiveAITasks ? 3000 : 30000;
+    const interval = setInterval(fetchTasks, intervalMs);
     return () => clearInterval(interval);
-  }, [fetchTasks]);
+  }, [fetchTasks, aiTasks]);
 
   const handleCancel = async (taskId: string) => {
     setActionLoading(taskId);
@@ -131,9 +215,9 @@ const TaskList: React.FC = () => {
     }
   };
 
-  // 批量重试失败任务
+  // 批量重试失败任务（只对定时发布任务有效）
   const handleRetryAllFailed = async () => {
-    const failedTasks = tasks.filter(t => t.status === 'failed' && t.retryable !== false);
+    const failedTasks = publishTasks.filter(t => t.status === 'failed' && t.retryable !== false);
     
     if (failedTasks.length === 0) {
       message.info('没有可重试的失败任务');
@@ -178,6 +262,11 @@ const TaskList: React.FC = () => {
       completed: { icon: <CheckCircleOutlined />, color: 'success', text: '已完成' },
       failed: { icon: <CloseCircleOutlined />, color: 'error', text: '失败' },
       cancelled: { icon: <PauseCircleOutlined />, color: 'default', text: '已取消' },
+      // AI 任务特有状态
+      analyzing: { icon: <SyncOutlined spin />, color: 'processing', text: '分析中' },
+      generating: { icon: <SyncOutlined spin />, color: 'blue', text: '生成中' },
+      copywriting: { icon: <SyncOutlined spin />, color: 'cyan', text: '文案中' },
+      publishing: { icon: <SyncOutlined spin />, color: 'orange', text: '发布中' },
     };
     const config = configs[status] || { icon: null, color: 'default', text: status };
     return (
@@ -187,45 +276,43 @@ const TaskList: React.FC = () => {
     );
   };
 
-  // 统计数据
+  // 任务类型标签
+  const getTypeTag = (type: 'publish' | 'ai', contentType?: 'image' | 'video') => {
+    if (type === 'ai') {
+      return (
+        <Tag icon={<RobotOutlined />} color="purple">
+          AI创作{contentType === 'image' ? '(图)' : contentType === 'video' ? '(视频)' : ''}
+        </Tag>
+      );
+    }
+    return (
+      <Tag icon={<VideoCameraOutlined />} color="blue">
+        定时发布
+      </Tag>
+    );
+  };
+
+  // 统计数据 - 使用统一任务列表
   const stats = {
-    total: tasks.length,
-    pending: tasks.filter((t) => t.status === 'pending').length,
-    completed: tasks.filter((t) => t.status === 'completed').length,
-    failed: tasks.filter((t) => t.status === 'failed').length,
-    retryable: tasks.filter((t) => t.status === 'failed' && t.retryable !== false).length,
+    total: unifiedTasks.length,
+    pending: unifiedTasks.filter((t) => ['pending', 'analyzing', 'generating', 'copywriting', 'publishing'].includes(t.status)).length,
+    completed: unifiedTasks.filter((t) => t.status === 'completed').length,
+    failed: unifiedTasks.filter((t) => t.status === 'failed').length,
+    retryable: unifiedTasks.filter((t) => t.status === 'failed' && t.retryable !== false && t.type === 'publish').length,
+    aiTasks: aiTasks.length,
+    publishTasks: publishTasks.length,
   };
 
   // 筛选数据
-  const filteredTasks = tasks.filter((task) => {
+  const filteredTasks = unifiedTasks.filter((task) => {
     const matchesSearch = task.taskId.toLowerCase().includes(searchText.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    // 状态筛选：pending 包括所有进行中的状态
+    const matchesStatus = statusFilter === 'all' || 
+      (statusFilter === 'pending' && ['pending', 'analyzing', 'generating', 'copywriting', 'publishing'].includes(task.status)) ||
+      task.status === statusFilter;
+    const matchesType = typeFilter === 'all' || task.type === typeFilter;
+    return matchesSearch && matchesStatus && matchesType;
   });
-
-  // 错误类型标签颜色
-  const errorTypeColors: Record<string, string> = {
-    TIMEOUT: 'warning',
-    TOKEN_EXPIRED: 'error',
-    MATERIAL_ERROR: 'orange',
-    RATE_LIMIT: 'warning',
-    PERMISSION_DENIED: 'error',
-    NETWORK_ERROR: 'warning',
-    VALIDATION_ERROR: 'orange',
-    UNKNOWN: 'default',
-  };
-
-  // 错误类型标签文字
-  const errorTypeLabels: Record<string, string> = {
-    TIMEOUT: '超时',
-    TOKEN_EXPIRED: '登录过期',
-    MATERIAL_ERROR: '素材异常',
-    RATE_LIMIT: '限流',
-    PERMISSION_DENIED: '权限不足',
-    NETWORK_ERROR: '网络错误',
-    VALIDATION_ERROR: '参数错误',
-    UNKNOWN: '未知',
-  };
 
   const columns = [
     {
@@ -233,98 +320,141 @@ const TaskList: React.FC = () => {
       dataIndex: 'taskId',
       key: 'taskId',
       ellipsis: true,
-      render: (id: string) => (
-        <Text code copyable={{ text: id }} style={{ fontSize: 13 }}>
-          {id.slice(0, 20)}...
-        </Text>
+      render: (id: string, record: UnifiedTask) => (
+        <Space direction="vertical" size={2}>
+          <Text code copyable={{ text: id }} style={{ fontSize: 13 }}>
+            {id.slice(0, 20)}...
+          </Text>
+          {getTypeTag(record.type, record.contentType)}
+        </Space>
       ),
     },
     {
-      title: '计划时间',
-      dataIndex: 'scheduledTime',
-      key: 'scheduledTime',
+      title: '时间',
+      dataIndex: 'time',
+      key: 'time',
       width: 180,
       render: (time: string) => (
         <Text>{new Date(time).toLocaleString()}</Text>
       ),
-      sorter: (a: Task, b: Task) =>
-        new Date(a.scheduledTime).getTime() - new Date(b.scheduledTime).getTime(),
+      sorter: (a: UnifiedTask, b: UnifiedTask) =>
+        new Date(a.time).getTime() - new Date(b.time).getTime(),
+      defaultSortOrder: 'descend' as const,
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 120,
-      render: (status: string, record: Task) => (
-        <Space direction="vertical" size={2}>
+      width: 150,
+      render: (status: string, record: UnifiedTask) => (
+        <Space direction="vertical" size={4}>
           {getStatusTag(status)}
-          {record.status === 'failed' && record.errorType && (
-            <Tag color={errorTypeColors[record.errorType] || 'default'} style={{ fontSize: 11 }}>
-              {errorTypeLabels[record.errorType] || record.errorType}
-            </Tag>
+          {/* AI 任务显示进度条 */}
+          {record.type === 'ai' && record.progress !== undefined && record.status !== 'completed' && record.status !== 'failed' && (
+            <Progress 
+              percent={record.progress} 
+              size="small" 
+              status="active"
+              style={{ width: 100 }}
+              format={(percent) => `${percent}%`}
+            />
+          )}
+          {/* AI 任务显示当前步骤 */}
+          {record.type === 'ai' && record.currentStep && record.status !== 'completed' && record.status !== 'failed' && (
+            <Text type="secondary" style={{ fontSize: 11 }}>
+              {record.currentStep}
+            </Text>
           )}
         </Space>
       ),
     },
     {
-      title: '错误详情',
-      key: 'errorDetail',
-      width: 250,
-      render: (_: any, record: Task) => {
-        if (record.status !== 'failed' || !record.result) {
-          return <Text type="secondary">-</Text>;
+      title: '详情',
+      key: 'detail',
+      width: 280,
+      render: (_: any, record: UnifiedTask) => {
+        // AI 任务完成后显示结果信息
+        if (record.type === 'ai' && record.status === 'completed' && record.result) {
+          const content = record.result.content;
+          return (
+            <Space direction="vertical" size={2}>
+              {record.result.analysis?.theme && (
+                <Text style={{ fontSize: 12 }}>主题: {record.result.analysis.theme}</Text>
+              )}
+              {content?.type && (
+                <Tag color={content.type === 'video' ? 'blue' : 'green'} style={{ fontSize: 11 }}>
+                  {content.type === 'video' ? <VideoCameraOutlined /> : <PictureOutlined />}
+                  {' '}{content.type === 'video' ? '视频' : '图片'}已生成
+                </Tag>
+              )}
+              {content?.previewUrl && (
+                <a href={content.previewUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11 }}>
+                  查看预览
+                </a>
+              )}
+            </Space>
+          );
         }
         
-        return (
-          <Collapse ghost size="small">
-            <Panel
-              header={
-                <Space>
-                  <InfoCircleOutlined />
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    {record.result.friendlyMessage || record.result.error?.slice(0, 30) || '查看详情'}
-                  </Text>
-                </Space>
-              }
-              key="1"
-            >
-              <div style={{ fontSize: 12 }}>
-                {record.result.error && (
-                  <Paragraph type="danger" style={{ marginBottom: 4, fontSize: 12 }}>
-                    {record.result.error}
-                  </Paragraph>
-                )}
-                {record.result.suggestion && (
-                  <Paragraph type="warning" style={{ marginBottom: 4, fontSize: 12 }}>
-                    建议: {record.result.suggestion}
-                  </Paragraph>
-                )}
-                {record.result.errorStep && (
-                  <Text type="secondary" style={{ fontSize: 11 }}>
-                    失败步骤: {record.result.errorStep === 'validate' ? '验证' : 
-                              record.result.errorStep === 'upload' ? '上传' : '发布'}
-                  </Text>
-                )}
-                {record.result.uploadedVideoId && (
-                  <div style={{ marginTop: 4 }}>
-                    <Tag color="green" style={{ fontSize: 11 }}>
-                      <CheckCircleOutlined /> 素材已上传
-                    </Tag>
-                  </div>
-                )}
-              </div>
-            </Panel>
-          </Collapse>
-        );
+        // 失败任务显示错误详情
+        if (record.status === 'failed') {
+          const errorMsg = record.error || record.result?.error;
+          if (!errorMsg) return <Text type="secondary">-</Text>;
+          
+          return (
+            <Collapse ghost size="small">
+              <Panel
+                header={
+                  <Space>
+                    <InfoCircleOutlined />
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {record.result?.friendlyMessage || errorMsg?.slice(0, 30) || '查看详情'}
+                    </Text>
+                  </Space>
+                }
+                key="1"
+              >
+                <div style={{ fontSize: 12 }}>
+                  {errorMsg && (
+                    <Paragraph type="danger" style={{ marginBottom: 4, fontSize: 12 }}>
+                      {errorMsg}
+                    </Paragraph>
+                  )}
+                  {record.result?.suggestion && (
+                    <Paragraph type="warning" style={{ marginBottom: 4, fontSize: 12 }}>
+                      建议: {record.result.suggestion}
+                    </Paragraph>
+                  )}
+                  {record.result?.errorStep && (
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      失败步骤: {record.result.errorStep === 'validate' ? '验证' : 
+                                record.result.errorStep === 'upload' ? '上传' : '发布'}
+                    </Text>
+                  )}
+                  {record.result?.uploadedVideoId && (
+                    <div style={{ marginTop: 4 }}>
+                      <Tag color="green" style={{ fontSize: 11 }}>
+                        <CheckCircleOutlined /> 素材已上传
+                      </Tag>
+                    </div>
+                  )}
+                </div>
+              </Panel>
+            </Collapse>
+          );
+        }
+        
+        return <Text type="secondary">-</Text>;
       },
     },
     {
       title: '操作',
       key: 'action',
       width: 180,
-      render: (_: any, record: Task) => (
+      render: (_: any, record: UnifiedTask) => (
         <Space size="small" wrap>
-          {record.status === 'pending' && (
+          {/* 定时发布任务的操作 */}
+          {record.type === 'publish' && record.status === 'pending' && (
             <Popconfirm
               title="取消任务"
               description="确定要取消这个任务吗？"
@@ -343,7 +473,7 @@ const TaskList: React.FC = () => {
               </Button>
             </Popconfirm>
           )}
-          {record.status === 'failed' && record.retryable !== false && (
+          {record.type === 'publish' && record.status === 'failed' && record.retryable !== false && (
             <>
               <Tooltip title="完整重试">
                 <Button
@@ -370,8 +500,19 @@ const TaskList: React.FC = () => {
               )}
             </>
           )}
-          {record.status === 'failed' && record.retryable === false && (
+          {record.type === 'publish' && record.status === 'failed' && record.retryable === false && (
             <Text type="secondary" style={{ fontSize: 12 }}>不可重试</Text>
+          )}
+          {/* AI 任务查看预览 */}
+          {record.type === 'ai' && record.status === 'completed' && record.result?.content?.previewUrl && (
+            <Button
+              size="small"
+              type="link"
+              href={record.result.content.previewUrl}
+              target="_blank"
+            >
+              查看
+            </Button>
           )}
         </Space>
       ),
@@ -506,14 +647,24 @@ const TaskList: React.FC = () => {
             gap: 12,
             marginBottom: 16,
             flexWrap: 'wrap',
+            alignItems: 'center',
           }}
         >
+          <Segmented
+            value={typeFilter}
+            onChange={(v) => setTypeFilter(v as typeof typeFilter)}
+            options={[
+              { value: 'all', label: `全部 (${stats.total})` },
+              { value: 'ai', label: <span><RobotOutlined /> AI创作 ({stats.aiTasks})</span> },
+              { value: 'publish', label: <span><VideoCameraOutlined /> 定时发布 ({stats.publishTasks})</span> },
+            ]}
+          />
           <Input
             placeholder="搜索任务 ID"
             prefix={<SearchOutlined style={{ color: '#9ca3af' }} />}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            style={{ width: 240 }}
+            style={{ width: 200 }}
             allowClear
           />
           <Select
@@ -522,7 +673,7 @@ const TaskList: React.FC = () => {
             style={{ width: 140 }}
             options={[
               { value: 'all', label: '全部状态' },
-              { value: 'pending', label: '待执行' },
+              { value: 'pending', label: '进行中' },
               { value: 'completed', label: '已完成' },
               { value: 'failed', label: '失败' },
               { value: 'cancelled', label: '已取消' },
