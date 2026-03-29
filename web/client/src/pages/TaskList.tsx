@@ -109,7 +109,7 @@ interface UnifiedTask {
 const TaskList: React.FC = () => {
   const [publishTasks, setPublishTasks] = useState<Task[]>([]);
   const [aiTasks, setAITasks] = useState<AITask[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // 初始为 true，仅首次加载显示
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'publish' | 'ai'>('all');
@@ -142,8 +142,8 @@ const TaskList: React.FC = () => {
     })),
   ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
-  const fetchTasks = useCallback(async () => {
-    setLoading(true);
+  const fetchTasks = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true);
     try {
       // 并行获取两种任务
       const [publishRes, aiRes] = await Promise.all([
@@ -159,18 +159,22 @@ const TaskList: React.FC = () => {
     }
   }, []);
 
+  // 检查是否有进行中的 AI 任务
+  const hasActiveAITasks = aiTasks.some(t => 
+    ['pending', 'analyzing', 'generating', 'copywriting', 'publishing'].includes(t.status)
+  );
+
   useEffect(() => {
-    fetchTasks();
-    // AI 任务需要更频繁的刷新来显示进度
-    // 检查是否有进行中的 AI 任务
-    const hasActiveAITasks = aiTasks.some(t => 
-      ['pending', 'analyzing', 'generating', 'copywriting', 'publishing'].includes(t.status)
-    );
-    // 有进行中的 AI 任务时，每 3 秒刷新；否则每 30 秒刷新
+    // 初次加载
+    fetchTasks(true);
+  }, [fetchTasks]);
+
+  useEffect(() => {
+    // 后台轮询：有进行中的 AI 任务时每 3 秒刷新；否则每 30 秒刷新
     const intervalMs = hasActiveAITasks ? 3000 : 30000;
-    const interval = setInterval(fetchTasks, intervalMs);
+    const interval = setInterval(() => fetchTasks(false), intervalMs);
     return () => clearInterval(interval);
-  }, [fetchTasks, aiTasks]);
+  }, [fetchTasks, hasActiveAITasks]);
 
   const handleCancel = async (taskId: string) => {
     setActionLoading(taskId);
@@ -632,7 +636,7 @@ const TaskList: React.FC = () => {
             )}
             <Button
               icon={<ReloadOutlined />}
-              onClick={fetchTasks}
+              onClick={() => fetchTasks(true)}
               loading={loading}
             >
               刷新
