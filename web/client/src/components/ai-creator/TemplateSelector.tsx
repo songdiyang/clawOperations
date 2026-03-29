@@ -298,6 +298,18 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                     </Paragraph>
                   )}
                   
+                  {/* 参考图预览 */}
+                  {template.referenceImageUrl && (
+                    <div style={{ marginBottom: 8 }}>
+                      <Image
+                        src={template.referenceImageUrl}
+                        alt="参考图"
+                        style={{ maxHeight: 80, borderRadius: 4 }}
+                        preview={{ mask: '查看参考图' }}
+                      />
+                    </div>
+                  )}
+                  
                   {/* 需求预览 */}
                   <Paragraph
                     ellipsis={{ rows: 2 }}
