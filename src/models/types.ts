@@ -343,6 +343,8 @@ export interface CreationTask {
   requirement: string;
   /** 内容类型偏好 */
   contentTypePreference?: 'image' | 'video' | 'auto';
+  /** 参考图 URL */
+  referenceImageUrl?: string;
   /** 需求分析结果 */
   analysis?: RequirementAnalysis;
   /** 生成的内容 */

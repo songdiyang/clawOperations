@@ -33,6 +33,16 @@ export type ProgressCallback = (progress: {
 }) => void;
 
 /**
+ * 生成选项
+ */
+export interface GenerateOptions {
+  /** 参考图 URL */
+  referenceImageUrl?: string;
+  /** 进度回调 */
+  onProgress?: ProgressCallback;
+}
+
+/**
  * 内容生成服务类
  */
 export class ContentGenerator {
@@ -56,16 +66,24 @@ export class ContentGenerator {
   /**
    * 根据需求分析结果生成内容
    * @param analysis 需求分析结果
-   * @param onProgress 进度回调
+   * @param options 生成选项（包含参考图、进度回调等）
    * @returns 生成的内容
    */
   async generate(
     analysis: RequirementAnalysis,
-    onProgress?: ProgressCallback
+    options?: GenerateOptions | ProgressCallback
   ): Promise<GeneratedContent> {
+    // 兼容旧版 API（直接传 onProgress 回调）
+    const opts: GenerateOptions = typeof options === 'function' 
+      ? { onProgress: options } 
+      : (options || {});
+    
+    const { referenceImageUrl, onProgress } = opts;
+
     logger.info('开始生成内容', { 
       contentType: analysis.contentType,
-      theme: analysis.theme 
+      theme: analysis.theme,
+      hasReferenceImage: !!referenceImageUrl
     });
 
     onProgress?.({
@@ -78,9 +96,9 @@ export class ContentGenerator {
       let content: GeneratedContent;
 
       if (analysis.contentType === 'image') {
-        content = await this.generateImage(analysis, onProgress);
+        content = await this.generateImage(analysis, onProgress, referenceImageUrl);
       } else {
-        content = await this.generateVideo(analysis, onProgress);
+        content = await this.generateVideo(analysis, onProgress, referenceImageUrl);
       }
 
       onProgress?.({
@@ -106,7 +124,8 @@ export class ContentGenerator {
    */
   private async generateImage(
     analysis: RequirementAnalysis,
-    onProgress?: ProgressCallback
+    onProgress?: ProgressCallback,
+    _referenceImageUrl?: string  // 图片生成目前不支持参考图，保留参数以便后续扩展
   ): Promise<GeneratedContent> {
     const prompt = analysis.imagePrompt || this.buildDefaultImagePrompt(analysis);
 
@@ -136,21 +155,28 @@ export class ContentGenerator {
    */
   private async generateVideo(
     analysis: RequirementAnalysis,
-    onProgress?: ProgressCallback
+    onProgress?: ProgressCallback,
+    referenceImageUrl?: string
   ): Promise<GeneratedContent> {
     const prompt = analysis.videoPrompt || this.buildDefaultVideoPrompt(analysis);
 
-    logger.info('生成视频', { promptLength: prompt.length });
+    logger.info('生成视频', { 
+      promptLength: prompt.length,
+      hasReferenceImage: !!referenceImageUrl 
+    });
 
     onProgress?.({
       stage: 'generating',
       percentage: 30,
-      message: '正在生成视频，这可能需要几分钟...',
+      message: referenceImageUrl 
+        ? '正在根据参考图生成视频，这可能需要几分钟...' 
+        : '正在生成视频，这可能需要几分钟...',
     });
 
     const content = await this.doubaoClient.generateVideo(prompt, {
       duration: this.videoDuration,
       resolution: this.videoResolution,
+      referenceImageUrl,
     });
 
     onProgress?.({

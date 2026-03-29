@@ -861,6 +861,7 @@ router.post('/workflow/start', async (req: Request, res: Response) => {
     
     let taskRequirement = requirement;
     let taskContentType = contentTypePreference;
+    let taskReferenceImageUrl: string | undefined;
     
     // 如果使用模板
     if (templateId) {
@@ -868,6 +869,7 @@ router.post('/workflow/start', async (req: Request, res: Response) => {
       if (template) {
         taskRequirement = template.requirement;
         taskContentType = template.contentTypePreference;
+        taskReferenceImageUrl = template.referenceImageUrl;  // 从模板获取参考图
       }
     }
     
@@ -882,6 +884,7 @@ router.post('/workflow/start', async (req: Request, res: Response) => {
     const task = creationTaskService.saveDraft({
       requirement: taskRequirement,
       contentTypePreference: taskContentType,
+      referenceImageUrl: taskReferenceImageUrl,
       status: 'draft',
       lastCompletedStep: 0,
       progress: 0,
@@ -974,9 +977,11 @@ router.post('/workflow/step', async (req: Request, res: Response) => {
           progress: 35,
         })!;
         
-        // 执行生成
+        // 执行生成，传递参考图 URL
         const generator = getContentGenerator();
-        const content = await generator.generate(task.analysis!);
+        const content = await generator.generate(task.analysis!, {
+          referenceImageUrl: task.referenceImageUrl,
+        });
         
         // 更新任务
         task = creationTaskService.updateDraft(taskId, {

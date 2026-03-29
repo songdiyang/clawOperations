@@ -194,24 +194,41 @@ export class DoubaoClient {
     options?: {
       duration?: number;
       resolution?: string;
+      referenceImageUrl?: string;  // 参考图 URL
     }
   ): Promise<GeneratedContent> {
     if (!this.videoModel) {
       throw new Error('视频生成模型未配置，请设置 DOUBAO_ENDPOINT_ID_VIDEO 环境变量');
     }
 
-    logger.info('开始生成视频', { promptLength: prompt.length });
+    logger.info('开始生成视频', { 
+      promptLength: prompt.length,
+      hasReferenceImage: !!options?.referenceImageUrl 
+    });
 
     try {
+      // 构建 content 数组
+      const content: { type: string; text?: string; image_url?: { url: string } }[] = [];
+      
+      // 如果有参考图，先添加图片
+      if (options?.referenceImageUrl) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: options.referenceImageUrl },
+        });
+        logger.info('使用参考图生成视频', { referenceImageUrl: options.referenceImageUrl });
+      }
+      
+      // 添加文本提示词
+      content.push({
+        type: 'text',
+        text: prompt,
+      });
+
       // 1. 创建视频生成任务 (火山引擎方舟 API)
       const request: VideoGenerationRequest = {
         model: this.videoModel,
-        content: [
-          {
-            type: 'text',
-            text: prompt,
-          },
-        ],
+        content,
         duration: options?.duration || 5,
         resolution: options?.resolution || '720p',
         ratio: '9:16',  // 竖屏视频，适合抖音
