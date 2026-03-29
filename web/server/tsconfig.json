@@ -12,11 +12,8 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "baseUrl": ".",
-    "paths": {
-      "claw-operations": ["../../src/index"]
-    }
+    "baseUrl": "."
   },
-  "include": ["src/**/*", "../../src/**/*"],
+  "include": ["src/**/*", "../../src/**/*", "../../config/**/*"],
   "exclude": ["node_modules", "dist"]
 }
