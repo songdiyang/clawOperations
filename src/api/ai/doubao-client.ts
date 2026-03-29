@@ -214,7 +214,7 @@ export class DoubaoClient {
         ],
         duration: options?.duration || 5,
         resolution: options?.resolution || '720p',
-        ratio: '16:9',
+        ratio: '9:16',  // 竖屏视频，适合抖音
         watermark: false,
       };
 
