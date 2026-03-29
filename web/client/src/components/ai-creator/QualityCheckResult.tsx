@@ -26,6 +26,7 @@ import {
   ClockCircleOutlined,
   TagOutlined,
   ReloadOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -75,6 +76,7 @@ interface QualityCheckResultProps {
   result: QualityCheckResult | null;
   loading?: boolean;
   onRecheck?: () => void;
+  onRegenerateCopywriting?: () => void;  // 新增：重新生成文案回调
   onCopySuggestion?: (text: string) => void;
 }
 
@@ -282,6 +284,7 @@ const QualityCheckResultDisplay: React.FC<QualityCheckResultProps> = ({
   result,
   loading = false,
   onRecheck,
+  onRegenerateCopywriting,
   onCopySuggestion,
 }) => {
   if (!result) {
@@ -399,6 +402,25 @@ const QualityCheckResultDisplay: React.FC<QualityCheckResultProps> = ({
         suggestedTags={result.suggestedTags}
         onCopy={handleCopy}
       />
+      
+      {/* 质量不合格时显示重新生成文案按钮 */}
+      {!result.passed && onRegenerateCopywriting && (
+        <>
+          <Divider style={{ margin: '16px 0' }} />
+          <Button
+            type="primary"
+            icon={<EditOutlined />}
+            onClick={onRegenerateCopywriting}
+            block
+            style={{ marginTop: 8 }}
+          >
+            重新生成文案
+          </Button>
+          <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginTop: 8, fontSize: 12 }}>
+            根据校验结果，AI 将优化文案内容
+          </Text>
+        </>
+      )}
     </Card>
   );
 };

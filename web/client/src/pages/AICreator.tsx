@@ -213,6 +213,25 @@ const AICreator: React.FC = () => {
     message.success(`已复制: ${text}`);
   }, []);
 
+  // 重新生成文案（当质量校验不通过时）
+  const handleRegenerateCopywriting = useCallback(async () => {
+    if (!task?.id) {
+      message.error('任务不存在');
+      return;
+    }
+    
+    // 清除之前的校验结果
+    setQualityCheckResult(null);
+    
+    try {
+      // 重新执行文案生成步骤
+      await executeStep('copywriting');
+      message.success('文案重新生成完成，请再次校验');
+    } catch (err: any) {
+      message.error(err.message || '重新生成失败');
+    }
+  }, [task?.id, executeStep]);
+
   return (
     <div>
       {/* 顶部工具栏 */}
@@ -586,8 +605,9 @@ const AICreator: React.FC = () => {
               <div style={{ marginBottom: 24 }}>
                 <QualityCheckResult
                   result={qualityCheckResult}
-                  loading={qualityChecking}
+                  loading={qualityChecking || isLoading}
                   onRecheck={handleQualityCheck}
+                  onRegenerateCopywriting={handleRegenerateCopywriting}
                   onCopySuggestion={handleCopySuggestion}
                 />
               </div>

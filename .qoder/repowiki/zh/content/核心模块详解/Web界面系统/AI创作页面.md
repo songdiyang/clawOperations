@@ -8,6 +8,7 @@
 - [HistoryDrawer.tsx](file://web/client/src/components/ai-creator/HistoryDrawer.tsx)
 - [TemplateSelector.tsx](file://web/client/src/components/ai-creator/TemplateSelector.tsx)
 - [NextActionGuide.tsx](file://web/client/src/components/ai-creator/NextActionGuide.tsx)
+- [QualityCheckResult.tsx](file://web/client/src/components/ai-creator/QualityCheckResult.tsx)
 - [useCreationWorkflow.ts](file://web/client/src/hooks/useCreationWorkflow.ts)
 - [content-generator.ts](file://src/services/ai/content-generator.ts)
 - [copywriting-generator.ts](file://src/services/ai/copywriting-generator.ts)
@@ -23,12 +24,11 @@
 
 ## 更新摘要
 **所做更改**
-- 新增五步进度指示器组件的详细说明
-- 添加快捷模板功能的完整实现分析
-- 更新按钮式单选组的交互设计说明
-- 新增复制到剪贴板功能的技术实现
-- 增强结果展示的用户界面设计分析
-- 完善草稿管理和历史记录功能说明
+- 新增视频预览功能的详细实现分析
+- 增强媒体预览系统的用户界面组件
+- 改进的用户界面组件交互设计
+- 新增内容质量校验功能的完整实现
+- 完善草稿管理、历史记录和模板管理功能
 
 ## 目录
 1. [项目概述](#项目概述)
@@ -50,7 +50,7 @@ ClawOperations 是一个专门针对TikTok（抖音）营销账户管理的自�
 
 该系统的核心创新在于其AI创作页面，用户只需输入简单的创作需求，AI即可自动生成高质量的图片或视频内容，并配套专业的推广文案，实现从创意到发布的完整自动化流程。
 
-**更新** 新版本引入了五步进度指示器、快捷模板功能、按钮式单选组等重大UI改进，显著提升了用户体验和创作效率。
+**更新** 新版本引入了视频预览功能、增强的媒体预览系统、内容质量校验功能以及改进的用户界面组件，显著提升了用户体验和创作效率。
 
 ## 系统架构
 
@@ -74,6 +74,7 @@ DB[Doubao AI]
 CL[内容生成器]
 CW[文案生成器]
 RA[需求分析器]
+QC[质量校验器]
 END
 subgraph "外部服务层"
 TT[TikTok API]
@@ -87,17 +88,19 @@ ROUTER --> SERVICE
 SERVICE --> CL
 SERVICE --> CW
 SERVICE --> RA
+SERVICE --> QC
 CL --> DB
 CW --> DS
 RA --> DS
+QC --> DS
 SERVICE --> UTILS
 UTILS --> FS
 SERVICE --> TT
 ```
 
 **架构图来源**
-- [AICreator.tsx:1-605](file://web/client/src/pages/AICreator.tsx#L1-L605)
-- [ai.ts:1-323](file://web/server/src/routes/ai.ts#L1-L323)
+- [AICreator.tsx:1-695](file://web/client/src/pages/AICreator.tsx#L1-L695)
+- [ai.ts:1-800](file://web/server/src/routes/ai.ts#L1-L800)
 
 ### 数据流架构
 
@@ -127,11 +130,20 @@ AI-->>Service : 返回生成内容
 Service-->>Router : 返回生成内容
 Router-->>API : 返回生成内容
 API-->>UI : 显示生成内容
+User->>UI : 点击质量校验
+UI->>API : 调用质量校验接口
+API->>Router : POST /api/ai/quality-check
+Router->>Service : checkQuality()
+Service->>AI : DeepSeek质量校验
+AI-->>Service : 返回校验结果
+Service-->>Router : 返回校验结果
+Router-->>API : 返回校验结果
+API-->>UI : 显示校验结果
 ```
 
 **架构图来源**
 - [AICreator.tsx:80-202](file://web/client/src/pages/AICreator.tsx#L80-L202)
-- [ai.ts:60-123](file://web/server/src/routes/ai.ts#L60-L123)
+- [ai.ts:105-133](file://web/server/src/routes/ai.ts#L105-L133)
 
 ## 核心组件分析
 
@@ -213,11 +225,18 @@ class NextActionGuide {
 +loading boolean
 +disabled boolean
 }
+class QualityCheckResult {
++QualityCheckResult result
++boolean loading
++onRecheck() void
++onCopySuggestion(text) void
+}
 AICreator --> WorkflowSteps : "使用"
 AICreator --> DraftManager : "使用"
 AICreator --> TemplateSelector : "使用"
 AICreator --> HistoryDrawer : "使用"
 AICreator --> NextActionGuide : "使用"
+AICreator --> QualityCheckResult : "使用"
 AICreator --> CreationResult : "生成"
 CreationResult --> RequirementAnalysis : "包含"
 CreationResult --> GeneratedContent : "包含"
@@ -225,13 +244,14 @@ CreationResult --> GeneratedCopywriting : "包含"
 ```
 
 **类图来源**
-- [AICreator.tsx:49-70](file://web/client/src/pages/AICreator.tsx#L49-L70)
-- [WorkflowSteps.tsx:1-200](file://web/client/src/components/ai-creator/WorkflowSteps.tsx#L1-L200)
-- [DraftManager.tsx:1-250](file://web/client/src/components/ai-creator/DraftManager.tsx#L1-L250)
-- [TemplateSelector.tsx:1-200](file://web/client/src/components/ai-creator/TemplateSelector.tsx#L1-L200)
-- [HistoryDrawer.tsx:1-200](file://web/client/src/components/ai-creator/HistoryDrawer.tsx#L1-L200)
-- [NextActionGuide.tsx:1-150](file://web/client/src/components/ai-creator/NextActionGuide.tsx#L1-L150)
-- [types.ts:207-259](file://src/models/types.ts#L207-L259)
+- [AICreator.tsx:68-95](file://web/client/src/pages/AICreator.tsx#L68-L95)
+- [WorkflowSteps.tsx:1-190](file://web/client/src/components/ai-creator/WorkflowSteps.tsx#L1-L190)
+- [DraftManager.tsx:1-217](file://web/client/src/components/ai-creator/DraftManager.tsx#L1-L217)
+- [TemplateSelector.tsx:1-370](file://web/client/src/components/ai-creator/TemplateSelector.tsx#L1-L370)
+- [HistoryDrawer.tsx:1-345](file://web/client/src/components/ai-creator/HistoryDrawer.tsx#L1-L345)
+- [NextActionGuide.tsx:1-146](file://web/client/src/components/ai-creator/NextActionGuide.tsx#L1-L146)
+- [QualityCheckResult.tsx:1-407](file://web/client/src/components/ai-creator/QualityCheckResult.tsx#L1-L407)
+- [types.ts:207-261](file://src/models/types.ts#L207-L261)
 
 ### 后端服务架构
 
@@ -265,9 +285,14 @@ class CopywritingGenerator {
 +generateVariants(analysis, count) GeneratedCopywriting[]
 -validateAndTrim(copywriting) void
 }
+class ContentQualityChecker {
+-DeepSeekClient deepseekClient
++check(input) QualityCheckResult
+}
 RequirementAnalyzer --> DeepSeekClient : "使用"
 ContentGenerator --> DoubaoClient : "使用"
 CopywritingGenerator --> DeepSeekClient : "使用"
+ContentQualityChecker --> DeepSeekClient : "使用"
 ```
 
 **类图来源**
@@ -285,16 +310,17 @@ Start([开始创作]) --> Step1[需求输入]
 Step1 --> Step2[需求分析]
 Step2 --> Step3[内容生成]
 Step3 --> Step4[文案生成]
-Step4 --> Step5[结果预览]
-Step5 --> Complete[创作完成]
+Step4 --> Step5[质量校验]
+Step5 --> Step6[结果预览]
+Step6 --> Complete[创作完成]
 Complete --> Start
 ```
 
-**更新** 新增五步进度指示器，提供清晰的创作流程可视化
+**更新** 新增质量校验步骤，提供更全面的内容审核流程
 
 **流程图来源**
 - [AICreator.tsx:202-208](file://web/client/src/pages/AICreator.tsx#L202-L208)
-- [WorkflowSteps.tsx:1-200](file://web/client/src/components/ai-creator/WorkflowSteps.tsx#L1-L200)
+- [WorkflowSteps.tsx:22-53](file://web/client/src/components/ai-creator/WorkflowSteps.tsx#L22-L53)
 
 ### 快捷模板创作流程
 
@@ -314,8 +340,8 @@ Form->>UI : 执行创作流程
 **新增** 快捷模板功能允许用户快速应用预设的创作需求
 
 **流程图来源**
-- [AICreator.tsx:54-60](file://web/client/src/pages/AICreator.tsx#L54-L60)
-- [AICreator.tsx:224-243](file://web/client/src/pages/AICreator.tsx#L224-L243)
+- [AICreator.tsx:58-66](file://web/client/src/pages/AICreator.tsx#L58-L66)
+- [AICreator.tsx:124-131](file://web/client/src/pages/AICreator.tsx#L124-L131)
 
 ### 一键创作流程
 
@@ -347,7 +373,7 @@ UI->>User : 展示发布按钮
 
 **流程图来源**
 - [AICreator.tsx:154-202](file://web/client/src/pages/AICreator.tsx#L154-L202)
-- [ai.ts:155-191](file://web/server/src/routes/ai.ts#L155-L191)
+- [ai.ts:259-292](file://web/server/src/routes/ai.ts#L259-L292)
 
 ## 前端界面设计
 
@@ -372,6 +398,7 @@ Right --> Loading[加载状态]
 Right --> Error[错误提示]
 Right --> Content[生成内容预览]
 Right --> Copywriting[生成文案]
+Right --> QualityCheck[质量校验]
 Right --> ResultButtons[结果操作按钮]
 Content --> Image[图片预览]
 Content --> Video[视频预览]
@@ -379,12 +406,40 @@ Copywriting --> Title[标题]
 Copywriting --> Description[描述]
 Copywriting --> Hashtags[话题标签]
 Copywriting --> CopyButtons[复制按钮]
+QualityCheck --> QualityResult[质量结果展示]
 ```
 
-**更新** 新增五步进度指示器、快捷模板、按钮式单选组等UI组件
+**更新** 新增质量校验组件和增强的媒体预览功能
 
 **架构图来源**
-- [AICreator.tsx:165-605](file://web/client/src/pages/AICreator.tsx#L165-L605)
+- [AICreator.tsx:216-695](file://web/client/src/pages/AICreator.tsx#L216-L695)
+
+### 视频预览功能实现
+
+**新增** 视频预览功能提供了完整的视频内容展示解决方案：
+
+- **HTML5视频播放器**: 使用原生video元素实现视频播放
+- **预览URL支持**: 支持在线视频URL直接预览
+- **本地文件展示**: 显示本地生成的视频文件路径
+- **播放控件**: 包含标准播放、暂停、进度控制等控件
+- **占位符设计**: 当视频未生成时显示占位符图标和文件路径
+- **响应式布局**: 视频容器支持自适应宽度
+
+**Section sources**
+- [AICreator.tsx:464-496](file://web/client/src/pages/AICreator.tsx#L464-L496)
+
+### 媒体预览系统增强
+
+**更新** 媒体预览系统现在支持双模式内容展示：
+
+- **图片预览**: 使用Ant Design Image组件，支持缩略图和全屏查看
+- **视频预览**: 使用HTML5 video元素，提供完整的播放控制
+- **统一样式**: 两种媒体类型采用一致的圆角边框和阴影效果
+- **状态指示**: 根据内容类型动态显示相应的图标和样式
+- **错误处理**: 当预览URL为空时提供友好的占位符显示
+
+**Section sources**
+- [AICreator.tsx:458-496](file://web/client/src/pages/AICreator.tsx#L458-L496)
 
 ### 快捷模板功能
 
@@ -396,8 +451,7 @@ Copywriting --> CopyButtons[复制按钮]
 - **品牌故事**: 创作品牌故事视频，展示品牌理念和发展历程
 
 **Section sources**
-- [AICreator.tsx:54-60](file://web/client/src/pages/AICreator.tsx#L54-L60)
-- [AICreator.tsx:224-243](file://web/client/src/pages/AICreator.tsx#L224-L243)
+- [AICreator.tsx:58-66](file://web/client/src/pages/AICreator.tsx#L58-L66)
 
 ### 按钮式单选组设计
 
@@ -410,7 +464,7 @@ Copywriting --> CopyButtons[复制按钮]
 每个按钮都配有相应的图标和样式，支持禁用状态和加载状态。
 
 **Section sources**
-- [AICreator.tsx:259-277](file://web/client/src/pages/AICreator.tsx#L259-L277)
+- [AICreator.tsx:310-328](file://web/client/src/pages/AICreator.tsx#L310-L328)
 
 ### 复制到剪贴板功能
 
@@ -422,9 +476,24 @@ Copywriting --> CopyButtons[复制按钮]
 - **字段标识**: 通过copiedField状态跟踪当前复制的字段
 
 **Section sources**
-- [AICreator.tsx:87-93](file://web/client/src/pages/AICreator.tsx#L87-L93)
-- [AICreator.tsx:456-463](file://web/client/src/pages/AICreator.tsx#L456-L463)
-- [AICreator.tsx:477-486](file://web/client/src/pages/AICreator.tsx#L477-L486)
+- [AICreator.tsx:98-103](file://web/client/src/pages/AICreator.tsx#L98-L103)
+- [AICreator.tsx:522-529](file://web/client/src/pages/AICreator.tsx#L522-L529)
+- [AICreator.tsx:544-551](file://web/client/src/pages/AICreator.tsx#L544-L551)
+
+### 内容质量校验功能
+
+**新增** 内容质量校验功能提供了全面的内容审核解决方案：
+
+- **质量评分**: 基于0-100分的综合评分系统
+- **问题分类**: 敏感词风险、品牌问题、平台适配、内容结构、发布建议
+- **严重等级**: 错误、警告、建议三个等级
+- **详细报告**: 每个问题包含位置、原文、建议和替代表达
+- **发布建议**: 提供发布时间和标签优化建议
+- **重新校验**: 支持对修改后的内容进行重新校验
+
+**Section sources**
+- [AICreator.tsx:176-209](file://web/client/src/pages/AICreator.tsx#L176-L209)
+- [QualityCheckResult.tsx:1-407](file://web/client/src/components/ai-creator/QualityCheckResult.tsx#L1-L407)
 
 ### 状态管理
 
@@ -434,11 +503,13 @@ stateDiagram-v2
 Idle --> Analyzing : 开始分析
 Analyzing --> Generating : 分析完成
 Generating --> Copywriting : 内容生成完成
-Copywriting --> Completed : 文案生成完成
+Copywriting --> QualityChecking : 文案生成完成
+QualityChecking --> Completed : 质量校验完成
 Completed --> Idle : 重置
 Analyzing --> Error : 分析失败
 Generating --> Error : 生成失败
 Copywriting --> Error : 文案生成失败
+QualityChecking --> Error : 校验失败
 Error --> Idle : 重置
 ```
 
@@ -458,11 +529,15 @@ Copywriting[/api/ai/copywriting]
 Create[/api/ai/create]
 Publish[/api/ai/publish]
 QuickCopywriting[/api/ai/quick-copywriting]
+QualityCheck[/api/ai/quality-check]
 TaskStatus[/api/ai/task/:taskId]
 Tasks[/api/ai/tasks]
 Draft[/api/ai/draft]
 History[/api/ai/history]
 Template[/api/ai/template]
+WorkflowStart[/api/ai/workflow/start]
+WorkflowStep[/api/ai/workflow/step]
+NextAction[/api/ai/workflow/:taskId/next-action]
 end
 subgraph "业务逻辑"
 Analyzer[需求分析服务]
@@ -472,6 +547,7 @@ Publisher[发布服务]
 DraftService[草稿服务]
 HistoryService[历史服务]
 TemplateService[模板服务]
+QualityChecker[质量校验服务]
 end
 Analyze --> Analyzer
 Generate --> Generator
@@ -479,17 +555,21 @@ Copywriting --> Copywriter
 Create --> Publisher
 Publish --> Publisher
 QuickCopywriting --> Copywriter
+QualityCheck --> QualityChecker
 TaskStatus --> Publisher
 Tasks --> Publisher
 Draft --> DraftService
 History --> HistoryService
 Template --> TemplateService
+WorkflowStart --> Publisher
+WorkflowStep --> Publisher
+NextAction --> Publisher
 ```
 
-**更新** 新增草稿、历史记录和模板相关的路由
+**更新** 新增质量校验路由和工作流管理路由
 
 **架构图来源**
-- [ai.ts:60-323](file://web/server/src/routes/ai.ts#L60-L323)
+- [ai.ts:96-800](file://web/server/src/routes/ai.ts#L96-L800)
 
 ### 服务依赖关系
 
@@ -507,6 +587,7 @@ AP[AI发布服务]
 DS[DraftService]
 HS[HistoryService]
 TS[TemplateService]
+QC[ContentQualityChecker]
 end
 subgraph "数据模型层"
 Types[类型定义]
@@ -517,15 +598,17 @@ CW --> DS
 AP --> RA
 AP --> CG
 AP --> CW
+QC --> DS
 DS --> Types
 HS --> Types
 TS --> Types
 RA --> Types
 CG --> Types
 CW --> Types
+QC --> Types
 ```
 
-**更新** 新增草稿、历史记录和模板服务
+**更新** 新增质量校验服务和工作流管理服务
 
 **架构图来源**
 - [requirement-analyzer.ts:6-34](file://src/services/ai/requirement-analyzer.ts#L6-L34)
@@ -546,7 +629,7 @@ class DeepSeekClient {
 +analyzeRequirement(userInput) RequirementAnalysis
 +generateCopywriting(analysis) GeneratedCopywriting
 +optimizeImagePrompt(basicPrompt, style) string
--chat(messages) string
++chat(messages) string
 }
 class RequirementAnalysis {
 +string contentType
@@ -564,13 +647,33 @@ class GeneratedCopywriting {
 +string[] hashtags
 +string suggestedPoiName
 }
+class QualityCheckInput {
++string title
++string description
++string[] hashtags
++string contentType
++string platform
++string brandName
++string scheduledTime
+}
+class QualityCheckResult {
++boolean passed
++number score
++QualityIssue[] issues
++QualityCheckSummary summary
++string checkedAt
++string suggestedPublishTime
++string[] suggestedTags
+}
 DeepSeekClient --> RequirementAnalysis : "生成"
 DeepSeekClient --> GeneratedCopywriting : "生成"
+DeepSeekClient --> QualityCheckResult : "生成"
 ```
 
 **类图来源**
 - [deepseek-client.ts:55-283](file://src/api/ai/deepseek-client.ts#L55-L283)
-- [types.ts:207-259](file://src/models/types.ts#L207-L259)
+- [types.ts:207-261](file://src/models/types.ts#L207-L261)
+- [types.ts:623-662](file://src/models/types.ts#L623-L662)
 
 ### Doubao AI集成
 
@@ -602,7 +705,7 @@ DoubaoClient --> GeneratedContent : "生成"
 
 **类图来源**
 - [doubao-client.ts:76-349](file://src/api/ai/doubao-client.ts#L76-L349)
-- [types.ts:229-245](file://src/models/types.ts#L229-L245)
+- [types.ts:231-247](file://src/models/types.ts#L231-L247)
 
 ## 配置管理
 
@@ -673,14 +776,34 @@ boolean success
 string taskId
 string error
 }
+QualityCheckInput {
+string title
+string description
+string[] hashtags
+string contentType
+string platform
+string brandName
+string scheduledTime
+}
+QualityCheckResult {
+boolean passed
+number score
+QualityIssue[] issues
+QualityCheckSummary summary
+string checkedAt
+string suggestedPublishTime
+string[] suggestedTags
+}
 RequirementAnalysis ||--o{ GeneratedContent : "生成"
 RequirementAnalysis ||--o{ GeneratedCopywriting : "生成"
 GeneratedContent ||--|| AIPublishResult : "包含"
 GeneratedCopywriting ||--|| AIPublishResult : "包含"
+QualityCheckInput ||--|| QualityCheckResult : "校验"
 ```
 
 **实体关系图来源**
 - [types.ts:207-316](file://src/models/types.ts#L207-L316)
+- [types.ts:623-682](file://src/models/types.ts#L623-L682)
 
 ## 错误处理与重试机制
 
@@ -741,6 +864,7 @@ Copywriting[文案缓存]
 Draft[草稿缓存]
 History[历史记录缓存]
 Template[模板缓存]
+Quality[质量校验缓存]
 end
 Memory --> DS
 Memory --> DB
@@ -750,14 +874,16 @@ Disk --> Copywriting
 Disk --> Draft
 Disk --> History
 Disk --> Template
+Disk --> Quality
 DS --> Analyzer
 DB --> Content
 Analyzer --> Copywriting
 Draft --> History
 History --> Template
+Quality --> Content
 ```
 
-**更新** 新增草稿、历史记录和模板的缓存策略
+**更新** 新增质量校验缓存策略
 
 ### 并发控制
 
@@ -812,17 +938,18 @@ AI创作页面是ClawOperations系统的核心功能模块，通过深度整合A
 - **多样化内容生成**: 支持图片和视频的AI生成
 - **专业文案创作**: 自动生成符合平台规范的推广文案
 - **一键发布**: 直接发布到TikTok平台
+- **质量校验**: 全面的内容质量审核和优化建议
 
 ### UI改进亮点
 **更新** 新版本的重大UI改进包括：
 
-- **五步进度指示器**: 提供清晰的创作流程可视化，让用户了解当前所处阶段
-- **快捷模板功能**: 四种预设创作场景，大幅提升创作效率
-- **按钮式单选组**: 更直观的内容类型选择方式，改善用户体验
-- **复制到剪贴板**: 一键复制标题和描述内容，简化文案使用流程
-- **增强的结果展示**: 更好的内容预览和文案展示界面
+- **视频预览功能**: 完整的HTML5视频播放器，支持在线和本地视频预览
+- **增强媒体预览系统**: 统一的图片和视频预览界面，提供更好的用户体验
+- **内容质量校验**: 详细的评分系统和问题分类，帮助用户优化内容质量
+- **改进的用户界面组件**: 更直观的按钮式单选组和增强的草稿管理功能
+- **五步进度指示器**: 清晰的创作流程可视化，让用户了解当前所处阶段
 
 ### 应用价值
 该系统显著提升了内容创作效率，降低了营销成本，为小龙虾主题的TikTok营销活动提供了强有力的技术支撑。通过AI驱动的自动化流程，用户可以专注于创意构思，而将技术实现交给系统完成。
 
-**更新** 新的UI改进进一步提升了用户的创作体验，使AI创作变得更加简单、高效和直观。
+**更新** 新的UI改进和功能增强进一步提升了用户的创作体验，使AI创作变得更加简单、高效和直观。视频预览功能和质量校验系统的加入，为用户提供了更全面的内容创作和优化解决方案。
