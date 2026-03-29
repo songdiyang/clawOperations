@@ -299,7 +299,21 @@ const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                     style={{ maxWidth: '100%', maxHeight: 300 }}
                   />
                 )}
-                {selectedItem.content.type === 'video' && (
+                {selectedItem.content.type === 'video' && selectedItem.content.previewUrl && (
+                  <div style={{ borderRadius: 8, overflow: 'hidden' }}>
+                    <video
+                      src={selectedItem.content.previewUrl}
+                      controls
+                      style={{ maxWidth: '100%', maxHeight: 300, display: 'block', borderRadius: 8 }}
+                    >
+                      您的浏览器不支持视频播放
+                    </video>
+                    <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                      {selectedItem.content.localPath}
+                    </Text>
+                  </div>
+                )}
+                {selectedItem.content.type === 'video' && !selectedItem.content.previewUrl && (
                   <Text type="secondary">视频文件: {selectedItem.content.localPath}</Text>
                 )}
               </>

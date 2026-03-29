@@ -461,6 +461,20 @@ const AICreator: React.FC = () => {
                     alt="生成的图片"
                     style={{ width: '100%', borderRadius: 8 }}
                   />
+                ) : result.content.type === 'video' && result.content.previewUrl ? (
+                  <div style={{ borderRadius: 8, overflow: 'hidden' }}>
+                    <video
+                      src={result.content.previewUrl}
+                      controls
+                      style={{ width: '100%', display: 'block', borderRadius: 8 }}
+                      poster=""
+                    >
+                      您的浏览器不支持视频播放
+                    </video>
+                    <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 8, textAlign: 'center' }}>
+                      {result.content.localPath}
+                    </div>
+                  </div>
                 ) : (
                   <div
                     style={{
