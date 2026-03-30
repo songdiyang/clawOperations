@@ -19,6 +19,7 @@ import {
   Collapse,
   Progress,
   Segmented,
+  Image,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -36,6 +37,8 @@ import {
   SyncOutlined,
   VideoCameraOutlined,
   PictureOutlined,
+  EyeOutlined,
+  PlayCircleOutlined,
 } from '@ant-design/icons';
 import { publishApi, aiApi } from '../api/client';
 
@@ -136,6 +139,29 @@ const TaskList: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'publish' | 'ai'>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  
+  // 预览弹窗状态
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewContent, setPreviewContent] = useState<{
+    type: 'video' | 'image';
+    url: string;
+    title?: string;
+  } | null>(null);
+
+  // 打开预览弹窗
+  const openPreview = (content: { type?: string; previewUrl?: string; localPath?: string }, title?: string) => {
+    const url = getPreviewUrl(content as any);
+    if (!url) {
+      message.warning('无法获取预览链接');
+      return;
+    }
+    setPreviewContent({
+      type: content.type === 'image' ? 'image' : 'video',
+      url,
+      title,
+    });
+    setPreviewOpen(true);
+  };
 
   // 合并两种任务为统一格式
   const unifiedTasks: UnifiedTask[] = [
@@ -420,9 +446,15 @@ const TaskList: React.FC = () => {
                 </Tag>
               )}
               {previewUrl && (
-                <a href={previewUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11 }}>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<EyeOutlined />}
+                  style={{ fontSize: 11, padding: 0, height: 'auto' }}
+                  onClick={() => openPreview(content, record.result.analysis?.theme)}
+                >
                   查看预览
-                </a>
+                </Button>
               )}
             </Space>
           );
@@ -536,19 +568,16 @@ const TaskList: React.FC = () => {
             <Text type="secondary" style={{ fontSize: 12 }}>不可重试</Text>
           )}
           {/* AI 任务查看预览 */}
-          {record.type === 'ai' && record.status === 'completed' && (() => {
-            const url = getPreviewUrl(record.result?.content);
-            return url ? (
-              <Button
-                size="small"
-                type="link"
-                href={url}
-                target="_blank"
-              >
-                查看
-              </Button>
-            ) : null;
-          })()}
+          {record.type === 'ai' && record.status === 'completed' && record.result?.content && (
+            <Button
+              size="small"
+              type="primary"
+              icon={<PlayCircleOutlined />}
+              onClick={() => openPreview(record.result.content, record.result.analysis?.theme)}
+            >
+              查看
+            </Button>
+          )}
         </Space>
       ),
     },
@@ -740,6 +769,50 @@ const TaskList: React.FC = () => {
           }}
         />
       </Card>
+
+      {/* 预览弹窗 */}
+      <Modal
+        title={
+          <Space>
+            {previewContent?.type === 'video' ? <VideoCameraOutlined /> : <PictureOutlined />}
+            {previewContent?.title || '内容预览'}
+          </Space>
+        }
+        open={previewOpen}
+        onCancel={() => {
+          setPreviewOpen(false);
+          setPreviewContent(null);
+        }}
+        footer={null}
+        width={previewContent?.type === 'video' ? 800 : 600}
+        centered
+        destroyOnClose
+      >
+        {previewContent && (
+          <div style={{ textAlign: 'center' }}>
+            {previewContent.type === 'video' ? (
+              <video
+                src={previewContent.url}
+                controls
+                autoPlay
+                style={{ 
+                  width: '100%', 
+                  maxHeight: '70vh',
+                  borderRadius: 8,
+                  backgroundColor: '#000'
+                }}
+              />
+            ) : (
+              <Image
+                src={previewContent.url}
+                alt="生成的图片"
+                style={{ maxWidth: '100%', borderRadius: 8 }}
+                preview={false}
+              />
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
