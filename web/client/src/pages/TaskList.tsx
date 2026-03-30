@@ -20,6 +20,7 @@ import {
   Progress,
   Segmented,
   Image,
+  Descriptions,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -38,7 +39,6 @@ import {
   VideoCameraOutlined,
   PictureOutlined,
   EyeOutlined,
-  PlayCircleOutlined,
 } from '@ant-design/icons';
 import { publishApi, aiApi } from '../api/client';
 
@@ -86,11 +86,19 @@ interface AITask {
     analysis?: {
       contentType: 'image' | 'video';
       theme: string;
+      style?: string;
+      targetAudience?: string;
+      keyPoints?: string[];
     };
     content?: {
       type: 'image' | 'video';
       previewUrl?: string;
       localPath?: string;
+    };
+    copywriting?: {
+      title: string;
+      description: string;
+      hashtags: string[];
     };
   };
 }
@@ -140,27 +148,40 @@ const TaskList: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<'all' | 'publish' | 'ai'>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   
-  // 预览弹窗状态
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewContent, setPreviewContent] = useState<{
-    type: 'video' | 'image';
-    url: string;
-    title?: string;
+  // 详情弹窗状态
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailData, setDetailData] = useState<{
+    analysis?: {
+      theme: string;
+      style?: string;
+      targetAudience?: string;
+      keyPoints?: string[];
+      contentType: 'image' | 'video';
+    };
+    content?: {
+      type: 'image' | 'video';
+      previewUrl?: string;
+      localPath?: string;
+    };
+    copywriting?: {
+      title: string;
+      description: string;
+      hashtags: string[];
+    };
   } | null>(null);
 
-  // 打开预览弹窗
-  const openPreview = (content: { type?: string; previewUrl?: string; localPath?: string }, title?: string) => {
-    const url = getPreviewUrl(content as any);
-    if (!url) {
-      message.warning('无法获取预览链接');
+  // 打开详情弹窗
+  const openDetail = (result: any) => {
+    if (!result) {
+      message.warning('无法获取任务详情');
       return;
     }
-    setPreviewContent({
-      type: content.type === 'image' ? 'image' : 'video',
-      url,
-      title,
+    setDetailData({
+      analysis: result.analysis,
+      content: result.content,
+      copywriting: result.copywriting,
     });
-    setPreviewOpen(true);
+    setDetailOpen(true);
   };
 
   // 合并两种任务为统一格式
@@ -451,9 +472,9 @@ const TaskList: React.FC = () => {
                   size="small"
                   icon={<EyeOutlined />}
                   style={{ fontSize: 11, padding: 0, height: 'auto' }}
-                  onClick={() => openPreview(content, record.result.analysis?.theme)}
+                  onClick={() => openDetail(record.result)}
                 >
-                  查看预览
+                  查看详情
                 </Button>
               )}
             </Space>
@@ -567,15 +588,15 @@ const TaskList: React.FC = () => {
           {record.type === 'publish' && record.status === 'failed' && record.retryable === false && (
             <Text type="secondary" style={{ fontSize: 12 }}>不可重试</Text>
           )}
-          {/* AI 任务查看预览 */}
-          {record.type === 'ai' && record.status === 'completed' && record.result?.content && (
+          {/* AI 任务查看详情 */}
+          {record.type === 'ai' && record.status === 'completed' && record.result && (
             <Button
               size="small"
               type="primary"
-              icon={<PlayCircleOutlined />}
-              onClick={() => openPreview(record.result.content, record.result.analysis?.theme)}
+              icon={<EyeOutlined />}
+              onClick={() => openDetail(record.result)}
             >
-              查看
+              查看详情
             </Button>
           )}
         </Space>
@@ -770,45 +791,90 @@ const TaskList: React.FC = () => {
         />
       </Card>
 
-      {/* 预览弹窗 */}
+      {/* 创作详情弹窗 */}
       <Modal
-        title={
-          <Space>
-            {previewContent?.type === 'video' ? <VideoCameraOutlined /> : <PictureOutlined />}
-            {previewContent?.title || '内容预览'}
-          </Space>
-        }
-        open={previewOpen}
+        title="创作详情"
+        open={detailOpen}
         onCancel={() => {
-          setPreviewOpen(false);
-          setPreviewContent(null);
+          setDetailOpen(false);
+          setDetailData(null);
         }}
         footer={null}
-        width={previewContent?.type === 'video' ? 800 : 600}
+        width={650}
         centered
         destroyOnClose
       >
-        {previewContent && (
-          <div style={{ textAlign: 'center' }}>
-            {previewContent.type === 'video' ? (
-              <video
-                src={previewContent.url}
-                controls
-                autoPlay
-                style={{ 
-                  width: '100%', 
-                  maxHeight: '70vh',
-                  borderRadius: 8,
-                  backgroundColor: '#000'
-                }}
-              />
-            ) : (
-              <Image
-                src={previewContent.url}
-                alt="生成的图片"
-                style={{ maxWidth: '100%', borderRadius: 8 }}
-                preview={false}
-              />
+        {detailData && (
+          <div>
+            {/* 分析结果 */}
+            {detailData.analysis && (
+              <>
+                <Text strong style={{ display: 'block', marginBottom: 8 }}>分析结果</Text>
+                <Descriptions column={2} size="small" bordered>
+                  <Descriptions.Item label="主题">{detailData.analysis.theme}</Descriptions.Item>
+                  <Descriptions.Item label="风格">{detailData.analysis.style || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="目标受众">{detailData.analysis.targetAudience || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="内容类型">
+                    {detailData.analysis.contentType === 'image' ? '图片' : '视频'}
+                  </Descriptions.Item>
+                </Descriptions>
+                {detailData.analysis.keyPoints && detailData.analysis.keyPoints.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <Text type="secondary">关键卖点: </Text>
+                    {detailData.analysis.keyPoints.map((point, idx) => (
+                      <Tag key={idx}>{point}</Tag>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            
+            {/* 生成内容 */}
+            {detailData.content && (
+              <>
+                <Text strong style={{ display: 'block', margin: '16px 0 8px' }}>生成内容</Text>
+                {detailData.content.type === 'image' ? (
+                  <Image
+                    src={getPreviewUrl(detailData.content) || ''}
+                    style={{ maxWidth: '100%', maxHeight: 350, borderRadius: 8 }}
+                  />
+                ) : (
+                  <div style={{ borderRadius: 8, overflow: 'hidden', background: '#000' }}>
+                    <video
+                      src={getPreviewUrl(detailData.content) || ''}
+                      controls
+                      style={{ maxWidth: '100%', maxHeight: 350, display: 'block', borderRadius: 8 }}
+                    >
+                      您的浏览器不支持视频播放
+                    </video>
+                  </div>
+                )}
+                {detailData.content.localPath && (
+                  <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                    {detailData.content.localPath}
+                  </Text>
+                )}
+              </>
+            )}
+            
+            {/* 推广文案 */}
+            {detailData.copywriting && (
+              <>
+                <Text strong style={{ display: 'block', margin: '16px 0 8px' }}>推广文案</Text>
+                <Card size="small" style={{ background: '#f9fafb' }}>
+                  <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                    {detailData.copywriting.title}
+                  </Text>
+                  <Text style={{ display: 'block', marginBottom: 12, whiteSpace: 'pre-wrap' }}>
+                    {detailData.copywriting.description}
+                  </Text>
+                  <Space wrap>
+                    {detailData.copywriting.hashtags.map((tag, idx) => (
+                      <Tag key={idx} color="blue">#{tag}</Tag>
+                    ))}
+                  </Space>
+                </Card>
+              </>
             )}
           </div>
         )}
