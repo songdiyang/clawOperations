@@ -155,7 +155,7 @@ export class DoubaoClient {
       const request: ImageGenerationRequest = {
         model: this.imageModel,
         prompt,
-        size: options?.size || '1024x1024',
+        size: options?.size || '2048x2048', // 豆包要求至少 3686400 像素 (1920x1920)
         n: options?.count || 1,
         response_format: 'url',
       };
@@ -183,8 +183,8 @@ export class DoubaoClient {
         // 使用本地 URL 作为预览地址，避免豆包 URL 过期
         previewUrl: `/generated/${fileName}`,
         metadata: {
-          width: parseInt(request.size?.split('x')[0] || '1024'),
-          height: parseInt(request.size?.split('x')[1] || '1024'),
+          width: parseInt(request.size?.split('x')[0] || '2048'),
+          height: parseInt(request.size?.split('x')[1] || '2048'),
           size: fs.statSync(localPath).size,
         },
       };
