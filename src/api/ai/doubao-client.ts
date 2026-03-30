@@ -119,9 +119,14 @@ export class DoubaoClient {
     this.pollInterval = DOUBAO_CONFIG.POLL_INTERVAL;
     this.taskTimeout = DOUBAO_CONFIG.TASK_TIMEOUT;
 
-    // 设置输出目录 - 使用 __dirname 确保路径一致性
-    // __dirname 在编译后位于 dist/api/ai，回溯到项目根目录
-    this.outputDir = path.join(__dirname, '../../../generated');
+    // 设置输出目录 - 使用绝对路径确保一致性
+    // 生产环境: /var/www/clawoperations/generated
+    // 开发环境: 项目根目录/generated
+    const projectRoot = process.env.PROJECT_ROOT || 
+      (process.cwd().includes('clawoperations') || process.cwd().includes('clawOperations')
+        ? process.cwd().replace(/[\/]web[\/]server.*$/, '').replace(/[\/]dist.*$/, '')
+        : process.cwd());
+    this.outputDir = path.join(projectRoot, 'generated');
     if (!fs.existsSync(this.outputDir)) {
       fs.mkdirSync(this.outputDir, { recursive: true });
     }
