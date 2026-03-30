@@ -109,7 +109,8 @@ interface UnifiedTask {
 const TaskList: React.FC = () => {
   const [publishTasks, setPublishTasks] = useState<Task[]>([]);
   const [aiTasks, setAITasks] = useState<AITask[]>([]);
-  const [loading, setLoading] = useState(true); // 初始为 true，仅首次加载显示
+  const [loading, setLoading] = useState(false);
+  const [initialLoaded, setInitialLoaded] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'publish' | 'ai'>('all');
@@ -142,8 +143,11 @@ const TaskList: React.FC = () => {
     })),
   ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
 
-  const fetchTasks = useCallback(async (showLoading = false) => {
-    if (showLoading) setLoading(true);
+  const fetchTasks = useCallback(async (isInitial = false) => {
+    // 只有初次加载或手动刷新时才显示 loading
+    if (isInitial && !initialLoaded) {
+      setLoading(true);
+    }
     try {
       // 并行获取两种任务
       const [publishRes, aiRes] = await Promise.all([
@@ -153,11 +157,12 @@ const TaskList: React.FC = () => {
       setPublishTasks(publishRes.data.data || []);
       setAITasks(aiRes.data.data || []);
     } catch (error: any) {
-      message.error(error.response?.data?.error || '获取任务列表失败');
+      console.error('获取任务失败:', error);
     } finally {
       setLoading(false);
+      if (!initialLoaded) setInitialLoaded(true);
     }
-  }, []);
+  }, [initialLoaded]);
 
   // 检查是否有进行中的 AI 任务
   const hasActiveAITasks = aiTasks.some(t => 
@@ -167,14 +172,15 @@ const TaskList: React.FC = () => {
   useEffect(() => {
     // 初次加载
     fetchTasks(true);
-  }, [fetchTasks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    // 后台轮询：有进行中的 AI 任务时每 3 秒刷新；否则每 30 秒刷新
-    const intervalMs = hasActiveAITasks ? 3000 : 30000;
+    // 后台轮询：有进行中的 AI 任务时每 5 秒刷新；否则每 30 秒刷新
+    const intervalMs = hasActiveAITasks ? 5000 : 30000;
     const interval = setInterval(() => fetchTasks(false), intervalMs);
     return () => clearInterval(interval);
-  }, [fetchTasks, hasActiveAITasks]);
+  }, [hasActiveAITasks, fetchTasks]);
 
   const handleCancel = async (taskId: string) => {
     setActionLoading(taskId);
