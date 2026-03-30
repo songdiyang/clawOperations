@@ -119,8 +119,9 @@ export class DoubaoClient {
     this.pollInterval = DOUBAO_CONFIG.POLL_INTERVAL;
     this.taskTimeout = DOUBAO_CONFIG.TASK_TIMEOUT;
 
-    // 设置输出目录
-    this.outputDir = path.join(process.cwd(), 'generated');
+    // 设置输出目录 - 使用 __dirname 确保路径一致性
+    // __dirname 在编译后位于 dist/api/ai，回溯到项目根目录
+    this.outputDir = path.join(__dirname, '../../../generated');
     if (!fs.existsSync(this.outputDir)) {
       fs.mkdirSync(this.outputDir, { recursive: true });
     }
