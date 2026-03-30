@@ -20,15 +20,25 @@
 - [src/api/ai/doubao-client.ts](file://src/api/ai/doubao-client.ts)
 - [src/services/ai-publish-service.ts](file://src/services/ai-publish-service.ts)
 - [web/client/src/components/ai-creator/TemplateSelector.tsx](file://web/client/src/components/ai-creator/TemplateSelector.tsx)
+- [mcp-server/src/index.ts](file://mcp-server/src/index.ts)
+- [mcp-server/package.json](file://mcp-server/package.json)
+- [mcp-server/README.md](file://mcp-server/README.md)
+- [deploy/nginx.conf](file://deploy/nginx.conf)
+- [deploy/nginx-ssl.conf](file://deploy/nginx-ssl.conf)
+- [web/server/src/services/creation-task-service.ts](file://web/server/src/services/creation-task-service.ts)
+- [web/server/src/database/index.ts](file://web/server/src/database/index.ts)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 内容生成器支持参考图像选项，GenerateOptions接口新增referenceImageUrl字段
-- ContentGenerator.generate方法现在接受可选的参考图像URL参数
-- Doubao AI客户端的generateVideo方法支持referenceImageUrl选项
-- 前端模板选择器新增参考图像上传功能
-- 后端API新增参考图像上传和模板管理功能
+- 新增MCP服务器支持，提供Model Context Protocol接口
+- 增强AI任务持久化能力，支持跨重启的任务状态保持
+- **MCP服务器超时从120秒增加到600秒（10分钟）**
+- **Nginx代理超时调整，支持AI视频生成的长时间处理**
+- 新增本地/generated目录的静态文件服务
+- 任务持久化服务支持草稿、历史记录和模板管理
+- **Doubao AI客户端超时从30秒增加到5分钟（300秒）**
+- **新增参考图像功能，支持基于参考图的内容生成**
 
 ## 目录
 1. [项目概述](#项目概述)
@@ -36,10 +46,13 @@
 3. [核心组件](#核心组件)
 4. [架构概览](#架构概览)
 5. [详细组件分析](#详细组件分析)
-6. [依赖关系分析](#依赖关系分析)
-7. [性能考虑](#性能考虑)
-8. [故障排除指南](#故障排除指南)
-9. [结论](#结论)
+6. [MCP服务器集成](#mcp服务器集成)
+7. [任务持久化系统](#任务持久化系统)
+8. [静态文件服务](#静态文件服务)
+9. [依赖关系分析](#依赖关系分析)
+10. [性能考虑](#性能考虑)
+11. [故障排除指南](#故障排除指南)
+12. [结论](#结论)
 
 ## 项目概述
 
@@ -54,6 +67,9 @@ AI内容生成系统是一个基于抖音（TikTok）平台的智能内容创作
 - **企业级配置**：支持环境变量配置和多种AI服务集成
 - **任务驱动架构**：支持异步任务处理和状态跟踪
 - **参考图像支持**：新增参考图像功能，支持基于参考图的内容生成
+- **MCP协议支持**：新增Model Context Protocol接口，支持外部AI平台集成
+- **任务持久化**：支持跨重启的任务状态保持和历史记录管理
+- **静态文件服务**：本地/generated目录提供AI生成内容的静态访问
 
 **章节来源**
 - [README.md:1-152](file://README.md#L1-L152)
@@ -77,21 +93,33 @@ G[路由控制器]
 H[业务逻辑层]
 I[模板管理]
 J[参考图像处理]
+K[任务持久化服务]
+L[数据库存储]
 end
 subgraph "核心库 (src)"
-K[发布管理器]
-L[认证模块]
-M[发布服务]
-N[定时服务]
-O[内容生成器]
-P[AI服务组件]
+M[发布管理器]
+N[认证模块]
+O[发布服务]
+P[定时服务]
+Q[内容生成器]
+R[AI服务组件]
 end
 subgraph "AI服务"
-Q[需求分析器]
-R[内容生成器]
-S[文案生成器]
-T[Doubao AI客户端]
-U[AI发布编排服务]
+S[需求分析器]
+T[内容生成器]
+U[文案生成器]
+V[Doubao AI客户端]
+W[AI发布编排服务]
+end
+subgraph "MCP服务器"
+X[MCP协议服务器]
+Y[工具执行器]
+Z[API客户端]
+end
+subgraph "部署配置"
+AA[Nginx配置]
+BB[静态文件服务]
+CC[代理设置]
 end
 A --> D
 B --> A
@@ -99,22 +127,29 @@ C --> F
 D --> E
 F --> G
 G --> H
-H --> K
+H --> M
+M --> N
+M --> O
+M --> P
+H --> Q
+Q --> R
+R --> S
+R --> T
+R --> U
+R --> V
+R --> W
+F --> K
 K --> L
-K --> M
-K --> N
-H --> O
-O --> P
-P --> Q
-P --> R
-P --> S
-P --> T
-P --> U
+X --> Y
+X --> Z
+AA --> BB
+AA --> CC
 ```
 
 **图表来源**
 - [src/index.ts:29-67](file://src/index.ts#L29-L67)
 - [web/server/src/index.ts:11-55](file://web/server/src/index.ts#L11-L55)
+- [mcp-server/src/index.ts:1-365](file://mcp-server/src/index.ts#L1-365)
 
 **章节来源**
 - [package.json:1-38](file://package.json#L1-L38)
@@ -248,7 +283,7 @@ AIPublishService --> PublishService : "使用"
 
 ## 架构概览
 
-系统采用分层架构设计，实现了清晰的关注点分离，现已支持任务驱动的异步处理和参考图像功能：
+系统采用分层架构设计，实现了清晰的关注点分离，现已支持任务驱动的异步处理、参考图像功能和MCP协议集成：
 
 ```mermaid
 graph TB
@@ -257,6 +292,7 @@ UI[React前端界面]
 API[RESTful API]
 TemplateSelector[模板选择器]
 ReferenceImageUploader[参考图像上传]
+MCPClient[MCP客户端]
 end
 subgraph "控制层"
 AuthCtrl[认证控制器]
@@ -264,6 +300,7 @@ AICtrl[AI创作控制器]
 PubCtrl[发布控制器]
 TemplateCtrl[模板控制器]
 RefImgCtrl[参考图像控制器]
+MCPController[MCP控制器]
 end
 subgraph "业务层"
 AIPubService[AI发布服务]
@@ -272,13 +309,17 @@ SchedulerService[定时服务]
 TaskManager[任务管理器]
 TemplateService[模板服务]
 RefImgService[参考图像服务]
+CreationTaskService[创作任务服务]
 end
 subgraph "数据访问层"
 DouyinClient[抖音API客户端]
 DoubaoClient[豆包AI客户端]
 DeepSeekClient[DeepSeek客户端]
-TemplateStorage[模板存储]
-RefImgStorage[参考图像存储]
+Database[低数据库]
+end
+subgraph "外部接口"
+MCPProtocol[MCP协议]
+ExternalAI[外部AI平台]
 end
 UI --> API
 API --> AuthCtrl
@@ -286,22 +327,27 @@ API --> AICtrl
 API --> PubCtrl
 API --> TemplateCtrl
 API --> RefImgCtrl
+API --> MCPController
 AuthCtrl --> AIPubService
 AICtrl --> AIPubService
 PubCtrl --> PubService
 TemplateCtrl --> TemplateService
 RefImgCtrl --> RefImgService
+MCPController --> AIPubService
 AIPubService --> PubService
 AIPubService --> TaskManager
 AIPubService --> TemplateService
 AIPubService --> RefImgService
+AIPubService --> CreationTaskService
 PubService --> SchedulerService
 AIPubService --> DoubaoClient
 AIPubService --> DeepSeekClient
 PubService --> DouyinClient
 TaskManager --> DoubaoClient
-TemplateService --> TemplateStorage
-RefImgService --> RefImgStorage
+TemplateService --> Database
+RefImgService --> Database
+CreationTaskService --> Database
+MCPProtocol --> ExternalAI
 ```
 
 **图表来源**
@@ -309,6 +355,7 @@ RefImgService --> RefImgStorage
 - [src/services/publish-service.ts:27-31](file://src/services/publish-service.ts#L27-L31)
 - [src/services/scheduler-service.ts:27-29](file://src/services/scheduler-service.ts#L27-L29)
 - [src/services/ai-publish-service.ts:43-73](file://src/services/ai-publish-service.ts#L43-L73)
+- [mcp-server/src/index.ts:24-173](file://mcp-server/src/index.ts#L24-L173)
 
 **章节来源**
 - [web/server/src/index.ts:1-55](file://web/server/src/index.ts#L1-L55)
@@ -426,12 +473,13 @@ SchedulerService --> PublishService : "调用"
 
 ### AI创作工作流
 
-AI创作系统实现了从需求分析到内容发布的完整自动化流程，现已支持任务驱动的异步处理和参考图像功能：
+AI创作系统实现了从需求分析到内容发布的完整自动化流程，现已支持任务驱动的异步处理、参考图像功能和MCP协议集成：
 
 ```mermaid
 sequenceDiagram
 participant User as "用户"
 participant API as "AI API"
+participant MCP as "MCP服务器"
 participant Analyzer as "需求分析器"
 participant Generator as "内容生成器"
 participant DoubaoClient as "Doubao客户端"
@@ -452,6 +500,8 @@ API-->>User : 返回完整创作结果
 User->>API : 选择发布
 API->>Publisher : 执行发布
 Publisher-->>API : 返回发布结果
+MCP->>API : 外部平台调用
+API-->>MCP : 返回结果
 ```
 
 **图表来源**
@@ -459,8 +509,9 @@ Publisher-->>API : 返回发布结果
 - [src/services/ai/content-generator.ts:62-102](file://src/services/ai/content-generator.ts#L62-L102)
 - [src/services/ai/copywriting-generator.ts:54-74](file://src/services/ai/copywriting-generator.ts#L54-L74)
 - [src/api/ai/doubao-client.ts:205-257](file://src/api/ai/doubao-client.ts#L205-L257)
+- [mcp-server/src/index.ts:176-322](file://mcp-server/src/index.ts#L176-L322)
 
-**更新** Doubao AI客户端已从直接生成模式迁移到任务驱动模式，支持异步状态跟踪和更长的超时时间。现在支持参考图像功能，用户可以上传参考图像来指导内容生成。
+**更新** Doubao AI客户端已从直接生成模式迁移到任务驱动模式，支持异步状态跟踪和更长的超时时间。现在支持参考图像功能，用户可以上传参考图像来指导内容生成。MCP服务器提供外部AI平台的统一接口，支持任务持久化和跨重启状态保持。
 
 AI工作流的关键特性：
 - 支持自动内容类型选择
@@ -469,12 +520,15 @@ AI工作流的关键特性：
 - 与发布系统的无缝集成
 - 任务状态跟踪和管理
 - **新增**：参考图像支持，增强内容生成的个性化定制
+- **新增**：MCP协议支持，外部平台可通过统一接口调用
+- **新增**：任务持久化，支持跨重启的任务状态保持
 
 **章节来源**
 - [web/server/src/routes/ai.ts:1-323](file://web/server/src/routes/ai.ts#L1-L323)
 - [src/services/ai/content-generator.ts:1-229](file://src/services/ai/content-generator.ts#L1-L229)
 - [src/services/ai/copywriting-generator.ts:1-194](file://src/services/ai/copywriting-generator.ts#L1-L194)
 - [src/api/ai/doubao-client.ts:1-362](file://src/api/ai/doubao-client.ts#L1-L362)
+- [mcp-server/src/index.ts:1-365](file://mcp-server/src/index.ts#L1-L365)
 
 ### Doubao AI客户端架构
 
@@ -530,7 +584,7 @@ DoubaoClient --> Content : "使用"
 - [src/api/ai/doubao-client.ts:85-123](file://src/api/ai/doubao-client.ts#L85-L123)
 - [src/api/ai/doubao-client.ts:41-80](file://src/api/ai/doubao-client.ts#L41-L80)
 
-**更新** Doubao AI客户端已从/videos/generations端点迁移到/contents/generations/tasks端点，采用内容驱动的请求结构，支持异步任务处理。现在支持参考图像功能，通过在content数组中添加image_url类型的内容来实现。
+**更新** Doubao AI客户端已从/videos/generations端点迁移到/contents/generations/tasks端点，采用内容驱动的请求结构，支持异步任务处理。现在支持参考图像功能，通过在content数组中添加image_url类型的内容来实现。MCP服务器的API客户端超时时间已增加到600秒，支持AI视频生成的长时间处理。
 
 Doubao客户端的关键变更：
 - **API端点迁移**：从/videos/generations到/contents/generations/tasks
@@ -539,10 +593,12 @@ Doubao客户端的关键变更：
 - **超时时间增加**：从30秒增加到5分钟（300秒）
 - **增强错误处理**：支持任务状态检查和错误信息追踪
 - **新增**：参考图像支持，通过image_url类型的内容实现
+- **新增**：MCP服务器支持，提供外部平台统一接口
 
 **章节来源**
 - [src/api/ai/doubao-client.ts:1-362](file://src/api/ai/doubao-client.ts#L1-L362)
 - [config/default.ts:50-59](file://config/default.ts#L50-L59)
+- [mcp-server/src/index.ts:15-21](file://mcp-server/src/index.ts#L15-L21)
 
 ### 参考图像功能
 
@@ -583,6 +639,181 @@ TemplateService-->>User : 返回生成内容
 - [web/client/src/components/ai-creator/TemplateSelector.tsx:1-474](file://web/client/src/components/ai-creator/TemplateSelector.tsx#L1-L474)
 - [web/server/src/routes/ai.ts:680-711](file://web/server/src/routes/ai.ts#L680-L711)
 
+## MCP服务器集成
+
+### MCP协议概述
+
+MCP（Model Context Protocol）服务器为外部AI平台提供统一的接口，支持ClawOperations的所有核心功能：
+
+```mermaid
+graph TB
+subgraph "MCP服务器架构"
+MCP[MCP服务器]
+Tools[工具注册]
+Executor[工具执行器]
+APIClient[API客户端]
+end
+subgraph "可用工具"
+Tool1[ai_create_content]
+Tool2[ai_analyze_requirement]
+Tool3[ai_generate_copywriting]
+Tool4[publish_video]
+Tool5[get_publish_tasks]
+Tool6[cancel_publish_task]
+Tool7[get_auth_status]
+Tool8[ai_create_and_publish]
+end
+subgraph "外部平台"
+Client[OpenClaw客户端]
+Other[其他MCP客户端]
+end
+MCP --> Tools
+Tools --> Tool1
+Tools --> Tool2
+Tools --> Tool3
+Tools --> Tool4
+Tools --> Tool5
+Tools --> Tool6
+Tools --> Tool7
+Tools --> Tool8
+MCP --> Executor
+Executor --> APIClient
+Client --> MCP
+Other --> MCP
+```
+
+**图表来源**
+- [mcp-server/src/index.ts:24-173](file://mcp-server/src/index.ts#L24-L173)
+- [mcp-server/src/index.ts:176-322](file://mcp-server/src/index.ts#L176-L322)
+
+### MCP服务器配置
+
+MCP服务器具有以下关键配置特点：
+
+- **超时设置**：API客户端超时时间为600秒（10分钟），支持AI视频生成的长时间处理
+- **工具注册**：提供8个核心工具，覆盖AI创作、发布、任务管理等功能
+- **环境配置**：通过CLAWOPS_API_URL环境变量配置后端API地址
+- **进程通信**：使用StdioServerTransport进行标准输入输出通信
+
+**章节来源**
+- [mcp-server/src/index.ts:1-365](file://mcp-server/src/index.ts#L1-L365)
+- [mcp-server/package.json:1-22](file://mcp-server/package.json#L1-L22)
+- [mcp-server/README.md:1-83](file://mcp-server/README.md#L1-L83)
+
+## 任务持久化系统
+
+### 数据库架构
+
+系统采用低数据库（lowdb）实现任务持久化，支持草稿、历史记录和模板的完整管理：
+
+```mermaid
+classDiagram
+class CreationTaskService {
+-Database db
++saveDraft(data) CreationTask
++getDraft(id) CreationTask
++listDrafts() CreationTask[]
++updateDraft(id, data) CreationTask
++deleteDraft(id) boolean
++resumeDraft(id) CreationTask
++saveToHistory(task) CreationTask
++getHistory(options) CreationTask[]
++getHistoryById(id) CreationTask
++getHistoryCount() number
++createTemplate(data) CreationTemplate
++listTemplates() CreationTemplate[]
++getTemplate(id) CreationTemplate
++updateTemplate(id, data) CreationTemplate
++deleteTemplate(id) boolean
++useTemplate(id) CreationTemplate
++getNextActionSuggestion(task) NextActionSuggestion
++calculateProgress(step, status) number
+}
+class DatabaseSchema {
++users : User[]
++user_auth_configs : UserAuthConfig[]
++creation_drafts : CreationTask[]
++creation_history : CreationTask[]
++creation_templates : CreationTemplate[]
++app_config : AppConfig
++_meta : Meta
+}
+CreationTaskService --> DatabaseSchema : "管理"
+```
+
+**图表来源**
+- [web/server/src/services/creation-task-service.ts:31-388](file://web/server/src/services/creation-task-service.ts#L31-L388)
+- [web/server/src/database/index.ts:8-36](file://web/server/src/database/index.ts#L8-L36)
+
+### 任务状态管理
+
+任务持久化系统支持完整的生命周期管理：
+
+- **草稿管理**：支持草稿的创建、更新、删除和恢复
+- **历史记录**：自动保存已完成和失败的任务历史
+- **模板系统**：支持模板的创建、使用和管理
+- **进度跟踪**：计算任务执行进度百分比
+- **下一步建议**：根据任务状态提供智能建议
+
+**章节来源**
+- [web/server/src/services/creation-task-service.ts:1-388](file://web/server/src/services/creation-task-service.ts#L1-L388)
+- [web/server/src/database/index.ts:1-126](file://web/server/src/database/index.ts#L1-L126)
+
+## 静态文件服务
+
+### Nginx配置优化
+
+系统通过Nginx配置实现了高效的静态文件服务，特别针对AI生成内容进行了优化：
+
+```mermaid
+graph TB
+subgraph "Nginx配置结构"
+Server[HTTP服务器]
+SPA[前端SPA路由]
+API[API代理]
+Generated[生成内容服务]
+Uploads[上传文件服务]
+Static[静态资源缓存]
+Health[健康检查]
+end
+subgraph "配置特性"
+Timeout[超时设置]
+Proxy[代理配置]
+Buffering[缓冲优化]
+Cache[缓存策略]
+Security[安全头]
+end
+Server --> SPA
+Server --> API
+Server --> Generated
+Server --> Uploads
+Server --> Static
+Server --> Health
+API --> Timeout
+API --> Proxy
+Generated --> Buffering
+Uploads --> Proxy
+Static --> Cache
+Server --> Security
+```
+
+**图表来源**
+- [deploy/nginx.conf:4-70](file://deploy/nginx.conf#L4-L70)
+- [deploy/nginx.conf:42-48](file://deploy/nginx.conf#L42-L48)
+
+### 生成内容服务
+
+专门针对AI生成的视频和图片文件提供了优化的静态文件服务：
+
+- **/generated/** 路径代理到本地生成目录
+- **禁用缓冲**：确保大文件的流式传输
+- **直连访问**：绕过应用层，直接提供静态文件
+- **支持断点续传**：优化大文件下载体验
+
+**章节来源**
+- [deploy/nginx.conf:41-48](file://deploy/nginx.conf#L41-L48)
+- [deploy/nginx-ssl.conf:50-64](file://deploy/nginx-ssl.conf#L50-L64)
+
 ## 依赖关系分析
 
 系统的主要依赖关系如下：
@@ -595,6 +826,8 @@ Winston[Winston日志库]
 NodeCron[Node-Cron定时器]
 Dotenv[Dotenv环境变量]
 Multer[Multer文件上传]
+LowDB[LowDB数据库]
+MCP_SDK[@modelcontextprotocol/sdk]
 end
 subgraph "核心模块"
 Index[src/index.ts]
@@ -611,6 +844,8 @@ DoubaoClient[src/api/ai/doubao-client.ts]
 ContentGen[src/services/ai/content-generator.ts]
 TemplateService[src/services/ai/template-service.ts]
 RefImgService[src/services/ai/ref-img-service.ts]
+CreationTaskService[web/server/src/services/creation-task-service.ts]
+Database[web/server/src/database/index.ts]
 end
 subgraph "AI服务"
 ReqAnalyzer[src/services/ai/requirement-analyzer.ts]
@@ -622,9 +857,14 @@ Routes[web/server/src/routes/ai.ts]
 Client[web/client/src/pages/AICreator.tsx]
 TemplateSelector[web/client/src/components/ai-creator/TemplateSelector.tsx]
 end
+subgraph "MCP层"
+MCPIndex[mcp-server/src/index.ts]
+MCPPkg[mcp-server/package.json]
+end
 Axios --> Auth
 Axios --> DoubaoClient
 Axios --> RefImgService
+Axios --> CreationTaskService
 Winston --> Logger
 NodeCron --> Scheduler
 Dotenv --> Config
@@ -639,6 +879,7 @@ AIPublish --> ContentGen
 AIPublish --> Copywriter
 AIPublish --> TemplateService
 AIPublish --> RefImgService
+AIPublish --> CreationTaskService
 ReqAnalyzer --> Logger
 ContentGen --> Logger
 Copywriter --> Logger
@@ -649,14 +890,20 @@ Routes --> Copywriter
 Routes --> Publish
 Routes --> TemplateService
 Routes --> RefImgService
+Routes --> CreationTaskService
 Client --> Server
 TemplateSelector --> Server
+MCPIndex --> MCP_SDK
+MCPIndex --> Axios
+MCPIndex --> Server
+MCPPkg --> MCP_SDK
 ```
 
 **图表来源**
 - [package.json:18-33](file://package.json#L18-L33)
 - [src/index.ts:1-20](file://src/index.ts#L1-L20)
 - [web/server/src/index.ts:1-10](file://web/server/src/index.ts#L1-L10)
+- [mcp-server/package.json:12-16](file://mcp-server/package.json#L12-L16)
 
 **章节来源**
 - [package.json:1-38](file://package.json#L1-L38)
@@ -685,12 +932,21 @@ TemplateSelector --> Server
 - **超时管理**：5分钟超时时间适应视频生成的较长处理时间
 - **错误重试机制**：支持任务状态查询和错误信息追踪
 - **参考图像优化**：参考图像上传采用分块传输，支持大文件处理
+- **MCP服务器优化**：600秒超时支持长时间AI处理任务
+- **任务持久化优化**：低数据库自动保存，支持跨重启状态保持
+- **Nginx代理优化**：API代理超时增加到600秒，支持长时间AI处理
 
 ### 参考图像处理优化
 - **文件大小限制**：5MB限制防止过大文件影响性能
 - **预览生成**：使用URL.createObjectURL生成预览，避免内存占用
 - **并发上传**：支持多模板同时上传参考图像
 - **缓存策略**：参考图像URL缓存减少重复上传
+
+### 静态文件服务优化
+- **Nginx缓冲优化**：/generated/路径禁用缓冲，支持大文件流式传输
+- **代理超时调整**：API代理超时增加到600秒，支持长时间AI处理
+- **静态资源缓存**：7天缓存策略，减少带宽消耗
+- **健康检查**：/health端点提供服务状态监控
 
 ## 故障排除指南
 
@@ -708,6 +964,7 @@ TemplateSelector --> Server
 - 查看AI服务的配额限制
 - **新增**：检查任务状态轮询是否正常工作
 - **新增**：验证参考图像URL的有效性
+- **新增**：确认MCP服务器超时设置（600秒）
 
 **视频上传失败**
 - 确认文件格式和大小限制
@@ -724,6 +981,7 @@ TemplateSelector --> Server
 - **新增**：检查任务状态轮询间隔设置
 - **新增**：验证超时时间配置（5分钟）
 - **新增**：查看任务错误信息和状态码
+- **新增**：检查任务持久化数据库状态
 
 **参考图像问题**
 - **新增**：检查图片文件格式（仅支持图片）
@@ -732,10 +990,26 @@ TemplateSelector --> Server
 - **新增**：检查模板中参考图像字段的正确传递
 - **新增**：验证参考图像存储目录的写入权限
 
+**MCP服务器问题**
+- **新增**：确认CLAWOPS_API_URL环境变量配置正确
+- **新增**：检查MCP服务器与后端API的连通性
+- **新增**：验证工具调用参数格式
+- **新增**：查看MCP服务器日志和错误信息
+- **新增**：确认MCP服务器超时设置（600秒）
+
+**静态文件服务问题**
+- **新增**：确认Nginx配置中的/generated/路径代理正确
+- **新增**：检查生成文件的存储权限
+- **新增**：验证文件名编码和特殊字符处理
+- **新增**：检查Nginx缓冲配置对大文件的影响
+- **新增**：确认API代理超时设置（600秒）
+
 **章节来源**
 - [src/utils/logger.ts:1-61](file://src/utils/logger.ts#L1-L61)
 - [src/services/publish-service.ts:165-172](file://src/services/publish-service.ts#L165-L172)
 - [src/api/ai/doubao-client.ts:281-305](file://src/api/ai/doubao-client.ts#L281-L305)
+- [mcp-server/src/index.ts:15-21](file://mcp-server/src/index.ts#L15-L21)
+- [deploy/nginx.conf:33-35](file://deploy/nginx.conf#L33-L35)
 
 ## 结论
 
@@ -750,6 +1024,9 @@ AI内容生成系统是一个功能完整、架构清晰的现代化内容创作
 5. **任务驱动架构**：支持异步处理和状态跟踪，提升系统可靠性
 6. **个性化定制**：新增参考图像功能，支持基于参考图的内容生成
 7. **模板化管理**：支持模板创建和管理，提高内容生成效率
+8. **MCP协议支持**：为外部AI平台提供统一的集成接口
+9. **任务持久化**：支持跨重启的任务状态保持和历史记录管理
+10. **静态文件优化**：专门针对AI生成内容的静态文件服务
 
 ### 发展方向
 
@@ -760,7 +1037,10 @@ AI内容生成系统是一个功能完整、架构清晰的现代化内容创作
 5. **任务管理优化**：进一步完善异步任务处理和状态跟踪机制
 6. **参考图像优化**：支持更多类型的参考图像和高级定制功能
 7. **模板生态建设**：建立模板分享和社区功能
+8. **MCP协议扩展**：支持更多外部AI平台和工具集成
+9. **持久化系统增强**：优化数据库性能和数据备份策略
+10. **静态文件服务优化**：支持CDN和分布式存储方案
 
-**更新** 系统已成功迁移到Doubao AI的最新API架构，采用任务驱动模式处理视频生成，显著提升了系统的稳定性和可靠性。新增的参考图像功能进一步增强了内容生成的个性化和定制化能力，为内容创作者提供了更强大的工具。
+**更新** 系统已成功迁移到Doubao AI的最新API架构，采用任务驱动模式处理视频生成，显著提升了系统的稳定性和可靠性。新增的参考图像功能进一步增强了内容生成的个性化和定制化能力，为内容创作者提供了更强大的工具。MCP服务器的引入为外部AI平台提供了统一的集成接口，任务持久化系统确保了跨重启的任务状态保持，Nginx配置优化为AI生成内容提供了高效的静态文件服务。
 
 该系统为内容创作者和营销团队提供了一个强大而易用的工具，有助于在数字内容领域保持竞争优势。

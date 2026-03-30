@@ -106,6 +106,27 @@ interface UnifiedTask {
   contentType?: 'image' | 'video';
 }
 
+// 获取正确的预览 URL（处理豆包 URL 过期问题）
+const getPreviewUrl = (content?: { previewUrl?: string; localPath?: string }): string | null => {
+  if (!content) return null;
+  
+  // 优先使用本地 URL
+  if (content.previewUrl?.startsWith('/generated/')) {
+    return content.previewUrl;
+  }
+  
+  // 从 localPath 提取文件名构造本地 URL
+  if (content.localPath) {
+    const fileName = content.localPath.split(/[\\\/]/).pop();
+    if (fileName) {
+      return `/generated/${fileName}`;
+    }
+  }
+  
+  // 回退到原始 previewUrl（可能是过期的外部链接）
+  return content.previewUrl || null;
+};
+
 const TaskList: React.FC = () => {
   const [publishTasks, setPublishTasks] = useState<Task[]>([]);
   const [aiTasks, setAITasks] = useState<AITask[]>([]);
@@ -386,6 +407,7 @@ const TaskList: React.FC = () => {
         // AI 任务完成后显示结果信息
         if (record.type === 'ai' && record.status === 'completed' && record.result) {
           const content = record.result.content;
+          const previewUrl = getPreviewUrl(content);
           return (
             <Space direction="vertical" size={2}>
               {record.result.analysis?.theme && (
@@ -397,8 +419,8 @@ const TaskList: React.FC = () => {
                   {' '}{content.type === 'video' ? '视频' : '图片'}已生成
                 </Tag>
               )}
-              {content?.previewUrl && (
-                <a href={content.previewUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11 }}>
+              {previewUrl && (
+                <a href={previewUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11 }}>
                   查看预览
                 </a>
               )}
@@ -514,16 +536,19 @@ const TaskList: React.FC = () => {
             <Text type="secondary" style={{ fontSize: 12 }}>不可重试</Text>
           )}
           {/* AI 任务查看预览 */}
-          {record.type === 'ai' && record.status === 'completed' && record.result?.content?.previewUrl && (
-            <Button
-              size="small"
-              type="link"
-              href={record.result.content.previewUrl}
-              target="_blank"
-            >
-              查看
-            </Button>
-          )}
+          {record.type === 'ai' && record.status === 'completed' && (() => {
+            const url = getPreviewUrl(record.result?.content);
+            return url ? (
+              <Button
+                size="small"
+                type="link"
+                href={url}
+                target="_blank"
+              >
+                查看
+              </Button>
+            ) : null;
+          })()}
         </Space>
       ),
     },

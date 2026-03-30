@@ -17,7 +17,25 @@
 - [web/server/src/index.ts](file://web/server/src/index.ts)
 - [web/server/src/routes/ai.ts](file://web/server/src/routes/ai.ts)
 - [web/client/src/pages/AICreator.tsx](file://web/client/src/pages/AICreator.tsx)
+- [mcp-server/README.md](file://mcp-server/README.md)
+- [src/utils/error-classifier.ts](file://src/utils/error-classifier.ts)
+- [src/services/publish-service.ts](file://src/services/publish-service.ts)
+- [src/utils/validator.ts](file://src/utils/validator.ts)
+- [web/server/src/routes/publish.ts](file://web/server/src/routes/publish.ts)
+- [web/server/src/services/creation-task-service.ts](file://web/server/src/services/creation-task-service.ts)
+- [web/server/src/database/index.ts](file://web/server/src/database/index.ts)
+- [web/client/src/components/ai-creator/HistoryDrawer.tsx](file://web/client/src/components/ai-creator/HistoryDrawer.tsx)
+- [web/client/src/components/publish/ImageTextEditor.tsx](file://web/client/src/components/publish/ImageTextEditor.tsx)
+- [web/client/src/pages/Publish.tsx](file://web/client/src/pages/Publish.tsx)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 新增AI任务持久化功能，支持服务器重启后的任务历史查询
+- 增强错误处理和配置验证机制
+- 改进图片发布逻辑和用户指导
+- 新增创作任务草稿和历史记录管理
+- 增强定时发布和任务状态跟踪功能
 
 ## 目录
 1. [简介](#简介)
@@ -25,10 +43,13 @@
 3. [核心组件](#核心组件)
 4. [架构概览](#架构概览)
 5. [详细组件分析](#详细组件分析)
-6. [依赖关系分析](#依赖关系分析)
-7. [性能考虑](#性能考虑)
-8. [故障排除指南](#故障排除指南)
-9. [结论](#结论)
+6. [AI任务持久化系统](#ai任务持久化系统)
+7. [OpenClaw/飞书集成](#openclaw飞书集成)
+8. [错误处理与重试机制](#错误处理与重试机制)
+9. [依赖关系分析](#依赖关系分析)
+10. [性能考虑](#性能考虑)
+11. [故障排除指南](#故障排除指南)
+12. [结论](#结论)
 
 ## 简介
 
@@ -42,21 +63,29 @@ AI发布服务是一个基于人工智能技术的抖音视频内容创作和发
 - **一键发布功能**：支持直接将生成的内容发布到抖音平台
 - **定时发布**：提供灵活的定时发布时间设置
 - **任务状态跟踪**：完整的任务进度监控和状态管理
+- **任务持久化**：支持服务器重启后的任务历史查询和恢复
+- **草稿管理**：完整的创作草稿保存和恢复功能
+- **历史记录**：持久化的创作历史和模板管理
+- **OpenClaw集成**：支持通过MCP协议与OpenClaw等AI平台集成
+- **增强错误处理**：完善的错误分类、重试和恢复机制
 
 ### 技术架构
 
-系统采用模块化设计，分为前端界面层、后端API层、AI服务层和抖音平台集成层四个主要层次：
+系统采用模块化设计，分为前端界面层、后端API层、AI服务层、抖音平台集成层和OpenClaw集成层五个主要层次：
 
 ```mermaid
 graph TB
 subgraph "前端界面层"
 UI[React前端界面]
 Creator[AICreator页面]
+History[历史记录抽屉]
+ImageEditor[图片文本编辑器]
 end
 subgraph "后端API层"
 Server[Express服务器]
 Routes[AI路由]
 Services[业务服务]
+TaskService[创作任务服务]
 end
 subgraph "AI服务层"
 Analyzer[需求分析器]
@@ -65,14 +94,29 @@ Copywriter[文案生成器]
 DeepSeek[DeepSeek AI]
 Doubao[豆包AI]
 end
+subgraph "数据持久化层"
+Database[LowDB数据库]
+Drafts[草稿存储]
+History[历史记录]
+Templates[模板管理]
+end
 subgraph "抖音平台集成层"
 Publisher[发布服务]
 Scheduler[调度服务]
 Auth[认证服务]
 end
+subgraph "OpenClaw集成层"
+MCP[MCP服务器]
+OpenClaw[OpenClaw客户端]
+Feishu[飞书集成]
+end
 UI --> Server
 Creator --> Routes
+History --> Routes
+ImageEditor --> Routes
 Routes --> Services
+Services --> TaskService
+TaskService --> Database
 Services --> Analyzer
 Services --> Generator
 Services --> Copywriter
@@ -80,12 +124,17 @@ Analyzer --> DeepSeek
 Generator --> Doubao
 Services --> Publisher
 Publisher --> Auth
+MCP --> OpenClaw
+MCP --> Feishu
 ```
 
 **图表来源**
 - [web/client/src/pages/AICreator.tsx:1-513](file://web/client/src/pages/AICreator.tsx#L1-L513)
-- [web/server/src/routes/ai.ts:1-323](file://web/server/src/routes/ai.ts#L1-L323)
-- [src/services/ai-publish-service.ts:1-358](file://src/services/ai-publish-service.ts#L1-L358)
+- [web/client/src/components/ai-creator/HistoryDrawer.tsx:1-345](file://web/client/src/components/ai-creator/HistoryDrawer.tsx#L1-L345)
+- [web/client/src/components/publish/ImageTextEditor.tsx:1-490](file://web/client/src/components/publish/ImageTextEditor.tsx#L1-L490)
+- [web/server/src/routes/ai.ts:1-707](file://web/server/src/routes/ai.ts#L1-L707)
+- [web/server/src/services/creation-task-service.ts:1-388](file://web/server/src/services/creation-task-service.ts#L1-L388)
+- [web/server/src/database/index.ts:1-126](file://web/server/src/database/index.ts#L1-L126)
 
 ## 项目结构
 
@@ -98,6 +147,7 @@ Root --> Web[web/ - 前后端应用]
 Root --> Config[config/ - 配置文件]
 Root --> Tests[tests/ - 测试用例]
 Root --> Docs[docs/ - 文档]
+Root --> MCP[mcp-server/ - OpenClaw集成]
 Src --> Api[api/ - API客户端]
 Src --> Models[models/ - 数据模型]
 Src --> Services[services/ - 业务服务]
@@ -107,9 +157,11 @@ Web --> Client[client/ - 前端应用]
 Server --> Routes[routes/ - 路由定义]
 Server --> Middleware[middleware/ - 中间件]
 Server --> Database[database/ - 数据库]
+Server --> Services[services/ - 业务服务]
 Client --> Pages[pages/ - 页面组件]
 Client --> Components[components/ - 通用组件]
 Client --> Api[api/ - API客户端]
+MCP --> MCP_README[README.md - MCP服务器说明]
 ```
 
 **图表来源**
@@ -123,6 +175,7 @@ Client --> Api[api/ - API客户端]
 - **web/client/**: React前端应用，提供用户交互界面
 - **config/**: 系统配置文件，包含API配置、重试配置等
 - **tests/**: 单元测试和集成测试用例
+- **mcp-server/**: OpenClaw/飞书集成的MCP服务器
 
 **章节来源**
 - [README.md:92-105](file://README.md#L92-L105)
@@ -184,7 +237,7 @@ CopywritingGenerator --> DeepSeekClient : "依赖"
 ```
 
 **图表来源**
-- [src/services/ai-publish-service.ts:43-358](file://src/services/ai-publish-service.ts#L43-L358)
+- [src/services/ai-publish-service.ts:43-377](file://src/services/ai-publish-service.ts#L43-L377)
 - [src/services/ai/requirement-analyzer.ts:25-128](file://src/services/ai/requirement-analyzer.ts#L25-L128)
 - [src/services/ai/content-generator.ts:38-229](file://src/services/ai/content-generator.ts#L38-L229)
 - [src/services/ai/copywriting-generator.ts:30-194](file://src/services/ai/copywriting-generator.ts#L30-L194)
@@ -200,8 +253,8 @@ DeepSeek AI客户端专注于需求分析和文案生成，支持复杂的对话
 豆包AI客户端专注于图片和视频的生成，支持异步任务管理和文件下载。
 
 **章节来源**
-- [src/services/ai-publish-service.ts:43-358](file://src/services/ai-publish-service.ts#L43-L358)
-- [src/api/ai/deepseek-client.ts:55-283](file://src/api/ai/deepseek-client.ts#L55-L283)
+- [src/services/ai-publish-service.ts:43-377](file://src/services/ai-publish-service.ts#L43-L377)
+- [src/api/ai/deepseek-client.ts:13-89](file://src/api/ai/deepseek-client.ts#L13-L89)
 - [src/api/ai/doubao-client.ts:76-349](file://src/api/ai/doubao-client.ts#L76-L349)
 
 ## 架构概览
@@ -213,42 +266,61 @@ graph TB
 subgraph "表现层"
 Frontend[React前端]
 UI[用户界面组件]
+History[历史记录展示]
+ImageEditor[图片编辑器]
 end
 subgraph "控制层"
 API[Express API]
 Controllers[控制器]
 Middlewares[中间件]
+TaskService[创作任务服务]
 end
 subgraph "业务层"
 AIService[AI服务]
 PublishService[发布服务]
 SchedulerService[调度服务]
+MCPService[MCP服务]
+Validator[验证器]
+ErrorClassifier[错误分类器]
 end
 subgraph "数据访问层"
 APIClient[API客户端]
-Storage[文件存储]
+LocalStorage[本地存储]
+Database[LowDB数据库]
 end
 subgraph "外部服务"
 DeepSeek[DeepSeek AI]
 Doubao[豆包AI]
 Douyin[Douyin平台]
+OpenClaw[OpenClaw AI]
+Feishu[飞书平台]
 end
 Frontend --> API
 UI --> Controllers
+History --> Controllers
+ImageEditor --> Controllers
 Controllers --> AIService
 Controllers --> PublishService
+Controllers --> MCPService
+Controllers --> TaskService
 AIService --> APIClient
 PublishService --> APIClient
+MCPService --> OpenClaw
+MCPService --> Feishu
 APIClient --> DeepSeek
 APIClient --> Doubao
 APIClient --> Douyin
-Storage --> AIService
+TaskService --> Database
+Database --> LocalStorage
+Validator --> PublishService
+ErrorClassifier --> PublishService
 ```
 
 **图表来源**
 - [web/server/src/index.ts:1-55](file://web/server/src/index.ts#L1-L55)
-- [web/server/src/routes/ai.ts:1-323](file://web/server/src/routes/ai.ts#L1-L323)
+- [web/server/src/routes/ai.ts:1-707](file://web/server/src/routes/ai.ts#L1-L707)
 - [src/index.ts:29-248](file://src/index.ts#L29-L248)
+- [web/server/src/services/creation-task-service.ts:1-388](file://web/server/src/services/creation-task-service.ts#L1-L388)
 
 ### 数据流设计
 
@@ -259,6 +331,7 @@ sequenceDiagram
 participant User as 用户
 participant UI as 前端界面
 participant API as 后端API
+participant TaskService as 创作任务服务
 participant Service as AI服务
 participant Analyzer as 需求分析器
 participant Generator as 内容生成器
@@ -266,6 +339,7 @@ participant Copywriter as 文案生成器
 participant Platform as 抖音平台
 User->>UI : 输入创作需求
 UI->>API : POST /api/ai/create
+API->>TaskService : 保存草稿
 API->>Service : createAndPublish()
 Service->>Analyzer : analyzeRequirement()
 Analyzer->>Analyzer : DeepSeek分析
@@ -278,7 +352,8 @@ Copywriter->>Copywriter : DeepSeek生成
 Copywriter-->>Service : GeneratedCopywriting
 Service->>Platform : 发布内容
 Platform-->>Service : 发布结果
-Service-->>API : AIPublishResult
+Service->>TaskService : 保存历史记录
+TaskService-->>API : 任务状态
 API-->>UI : 返回结果
 UI-->>User : 显示创作结果
 ```
@@ -286,6 +361,7 @@ UI-->>User : 显示创作结果
 **图表来源**
 - [web/server/src/routes/ai.ts:158-229](file://web/server/src/routes/ai.ts#L158-L229)
 - [src/services/ai-publish-service.ts:90-213](file://src/services/ai-publish-service.ts#L90-L213)
+- [web/server/src/services/creation-task-service.ts:145-166](file://web/server/src/services/creation-task-service.ts#L145-L166)
 
 ## 详细组件分析
 
@@ -411,6 +487,330 @@ Doubao-->>Service : 返回GeneratedContent
 - [src/index.ts:153-181](file://src/index.ts#L153-L181)
 - [src/models/types.ts:101-124](file://src/models/types.ts#L101-L124)
 
+## AI任务持久化系统
+
+**新增** 系统新增了完整的AI任务持久化功能，支持服务器重启后的任务历史查询和恢复。
+
+### 创作任务服务
+
+创作任务服务是AI任务持久化系统的核心组件，负责管理草稿、历史记录和模板。
+
+```mermaid
+classDiagram
+class CreationTaskService {
+-creation_drafts : Collection
+-creation_history : Collection
+-creation_templates : Collection
++saveDraft(data) CreationTask
++getDraft(id) CreationTask
++listDrafts() CreationTask[]
++updateDraft(id, data) CreationTask
++deleteDraft(id) boolean
++resumeDraft(id) CreationTask
++saveToHistory(task) CreationTask
++getHistory(options) CreationTask[]
++getHistoryById(id) CreationTask
++getHistoryCount() number
++createTemplate(data) CreationTemplate
++listTemplates() CreationTemplate[]
++getTemplate(id) CreationTemplate
++updateTemplate(id, data) CreationTemplate
++deleteTemplate(id) boolean
++useTemplate(id) CreationTemplate
++getNextActionSuggestion(task) NextActionSuggestion
++calculateProgress(step, status) number
+}
+class CreationTask {
+-id : string
+-status : CreationTaskStatus
+-requirement : string
+-contentTypePreference : 'image' | 'video' | 'auto'
+-analysis : RequirementAnalysis
+-content : GeneratedContent
+-copywriting : GeneratedCopywriting
+-publishedResult : PublishResult
+-progress : number
+-currentStepMessage : string
+-createdAt : string
+-updatedAt : string
+-completedAt : string
+-canResume : boolean
+-lastCompletedStep : number
+}
+class LowDBDatabase {
+-creation_drafts : CreationTask[]
+-creation_history : CreationTask[]
+-creation_templates : CreationTemplate[]
++get(path) Collection
++defaults(data) LowDBDatabase
++write() void
+}
+CreationTaskService --> CreationTask : "管理"
+CreationTaskService --> LowDBDatabase : "持久化"
+```
+
+**图表来源**
+- [web/server/src/services/creation-task-service.ts:31-388](file://web/server/src/services/creation-task-service.ts#L31-L388)
+- [web/server/src/database/index.ts:8-126](file://web/server/src/database/index.ts#L8-L126)
+
+### 数据库架构
+
+系统使用LowDB作为轻量级数据库，支持JSON文件存储：
+
+```mermaid
+graph TB
+subgraph "数据库结构"
+DB[LowDB数据库]
+Drafts[creation_drafts]
+History[creation_history]
+Templates[creation_templates]
+Users[users]
+AuthConfigs[user_auth_configs]
+AppConfig[app_config]
+end
+subgraph "草稿存储"
+Draft1[draft_123456_abcde]
+Draft2[draft_789012_fghij]
+end
+subgraph "历史记录存储"
+History1[history_123456_klmno]
+History2[history_789012_pqrst]
+end
+subgraph "模板存储"
+Tpl1[tpl_123456_uvwx]
+Tpl2[tpl_789012_yzab]
+end
+DB --> Drafts
+DB --> History
+DB --> Templates
+DB --> Users
+DB --> AuthConfigs
+DB --> AppConfig
+Drafts --> Draft1
+Drafts --> Draft2
+History --> History1
+History --> History2
+Templates --> Tpl1
+Templates --> Tpl2
+```
+
+**图表来源**
+- [web/server/src/database/index.ts:8-78](file://web/server/src/database/index.ts#L8-L78)
+
+### 任务生命周期管理
+
+```mermaid
+stateDiagram-v2
+[*] --> Draft : 创建草稿
+Draft --> Analyzing : 开始分析
+Analyzing --> Generating : 分析完成
+Generating --> Copywriting : 内容生成完成
+Copywriting --> Preview : 文案生成完成
+Preview --> Publishing : 预览完成
+Publishing --> Completed : 发布成功
+Publishing --> Failed : 发布失败
+Failed --> Draft : 保存草稿重试
+Completed --> [*] : 保存历史记录
+Draft --> [*] : 删除草稿
+```
+
+**图表来源**
+- [web/server/src/services/creation-task-service.ts:294-384](file://web/server/src/services/creation-task-service.ts#L294-L384)
+
+### 历史记录查询
+
+系统提供完整的任务历史查询功能：
+
+```mermaid
+sequenceDiagram
+participant Client as 客户端
+participant API as AI路由
+participant TaskService as 创作任务服务
+participant DB as 数据库
+Client->>API : GET /api/ai/tasks
+API->>TaskService : 获取所有任务
+TaskService->>TaskService : 从内存获取进行中的任务
+TaskService->>DB : 获取历史任务
+DB-->>TaskService : 返回历史记录
+TaskService->>TaskService : 转换任务格式
+TaskService-->>API : 返回合并后的任务列表
+API-->>Client : 返回任务状态
+```
+
+**图表来源**
+- [web/server/src/routes/ai.ts:426-471](file://web/server/src/routes/ai.ts#L426-L471)
+
+**章节来源**
+- [web/server/src/services/creation-task-service.ts:1-388](file://web/server/src/services/creation-task-service.ts#L1-L388)
+- [web/server/src/database/index.ts:1-126](file://web/server/src/database/index.ts#L1-L126)
+- [web/server/src/routes/ai.ts:426-471](file://web/server/src/routes/ai.ts#L426-L471)
+
+## OpenClaw/飞书集成
+
+系统新增了对OpenClaw和飞书平台的集成支持，通过MCP (Model Context Protocol) 服务器实现。
+
+### MCP服务器架构
+
+```mermaid
+graph TB
+subgraph "MCP服务器层"
+MCP_Server[MCP服务器]
+MCP_Client[MCP客户端]
+end
+subgraph "AI平台集成"
+OpenClaw[OpenClaw AI平台]
+Feishu[飞书平台]
+end
+subgraph "ClawOperations核心"
+AIService[AI服务]
+PublishService[发布服务]
+Auth[认证服务]
+TaskService[创作任务服务]
+end
+MCP_Server --> OpenClaw
+MCP_Server --> Feishu
+OpenClaw --> AIService
+Feishu --> PublishService
+AIService --> Auth
+PublishService --> Auth
+TaskService --> Auth
+```
+
+**图表来源**
+- [mcp-server/README.md:1-114](file://mcp-server/README.md#L1-L114)
+
+### 支持的功能
+
+- **AI智能创作**：`ai_create_content` - 根据需求自动生成视频/图片内容和推广文案
+- **需求分析**：`ai_analyze_requirement` - 分析用户的创作需求
+- **文案生成**：`ai_generate_copywriting` - 快速生成推广文案
+- **视频发布**：`publish_video` - 发布视频到抖音平台
+- **任务管理**：`get_publish_tasks`、`cancel_publish_task` - 定时发布任务管理
+- **认证状态**：`get_auth_status` - 获取抖音认证状态
+- **一键创作发布**：`ai_create_and_publish` - 完整的工作流
+
+### 集成配置
+
+系统支持通过环境变量配置MCP服务器的API地址：
+
+```typescript
+// MCP服务器配置
+env: {
+  "CLAWOPS_API_URL": "http://localhost:3001/api"
+}
+```
+
+**章节来源**
+- [mcp-server/README.md:15-29](file://mcp-server/README.md#L15-L29)
+- [mcp-server/README.md:42-98](file://mcp-server/README.md#L42-L98)
+
+## 错误处理与重试机制
+
+系统实现了完善的错误分类、重试和恢复机制，确保服务的稳定性和可靠性。
+
+### 错误分类系统
+
+```mermaid
+classDiagram
+class ErrorClassification {
+-type : PublishErrorType
+-retryable : boolean
+-message : string
+-suggestion : string
+}
+class PublishErrorType {
+<<enumeration>>
+TIMEOUT
+TOKEN_EXPIRED
+MATERIAL_ERROR
+RATE_LIMIT
+PERMISSION_DENIED
+NETWORK_ERROR
+VALIDATION_ERROR
+UNKNOWN
+}
+class ErrorClassifier {
++classifyError(error) ErrorClassification
++isRetryableError(error) boolean
++getErrorTypeName(type) string
++getErrorSuggestion(type) string
++shouldAutoRetry(type, retryCount, maxRetries) boolean
++calculateRetryDelay(retryCount, baseDelay, maxDelay) number
+}
+ErrorClassifier --> ErrorClassification : "返回"
+ErrorClassification --> PublishErrorType : "包含"
+```
+
+**图表来源**
+- [src/utils/error-classifier.ts:11-296](file://src/utils/error-classifier.ts#L11-L296)
+- [src/models/types.ts:496-534](file://src/models/types.ts#L496-L534)
+
+### 错误分类规则
+
+系统支持以下错误类型的自动分类：
+
+- **TIMEOUT**：请求超时，支持自动重试
+- **TOKEN_EXPIRED**：登录过期，需要重新授权
+- **MATERIAL_ERROR**：素材文件异常，不支持自动重试
+- **RATE_LIMIT**：平台限流，支持自动重试
+- **PERMISSION_DENIED**：权限不足，不支持自动重试
+- **NETWORK_ERROR**：网络连接失败，支持自动重试
+- **VALIDATION_ERROR**：参数验证失败，不支持自动重试
+- **UNKNOWN**：未知错误，默认允许重试
+
+### 自动重试机制
+
+```mermaid
+sequenceDiagram
+participant Client as 客户端
+participant Service as 发布服务
+participant Platform as 平台API
+Client->>Service : 发布请求
+Service->>Platform : 第一次请求
+Platform-->>Service : 错误响应
+Service->>Service : 错误分类
+alt 可自动重试
+Service->>Service : 计算延迟时间
+Service->>Service : 指数退避重试
+Service->>Platform : 重试请求
+Platform-->>Service : 成功响应
+Service-->>Client : 发布成功
+else 不可自动重试
+Service-->>Client : 返回错误
+end
+```
+
+**图表来源**
+- [src/services/publish-service.ts:210-249](file://src/services/publish-service.ts#L210-L249)
+- [src/utils/error-classifier.ts:250-286](file://src/utils/error-classifier.ts#L250-L286)
+
+### 防御性配置检查
+
+系统增加了多项防御性配置检查，防止配置对象为undefined时的错误：
+
+```typescript
+// 防御性配置检查，确保 AI_CONFIG.DEEPSEEK 存在
+const DEEPSEEK_CONFIG = AI_CONFIG?.DEEPSEEK ?? {
+  BASE_URL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
+  MODEL: 'deepseek-chat',
+  MAX_TOKENS: 4096,
+  TEMPERATURE: 0.7,
+};
+
+// 防御性配置检查，确保 AI_CONFIG.DOUBAO 存在
+const DOUBAO_CONFIG = AI_CONFIG?.DOUBAO ?? {
+  BASE_URL: process.env.DOUBAO_BASE_URL || 'https://ark.cn-beijing.argcvcs.com',
+  MODEL: 'doubao-video',
+  MAX_TOKENS: 2048,
+  TEMPERATURE: 0.8,
+};
+```
+
+**章节来源**
+- [src/utils/error-classifier.ts:1-296](file://src/utils/error-classifier.ts#L1-L296)
+- [src/services/publish-service.ts:1-413](file://src/services/publish-service.ts#L1-L413)
+- [src/api/ai/deepseek-client.ts:13-19](file://src/api/ai/deepseek-client.ts#L13-L19)
+
 ## 依赖关系分析
 
 系统采用模块化的依赖设计，确保各组件之间的低耦合高内聚。
@@ -422,6 +822,9 @@ Axios[Axios HTTP客户端]
 Winston[Winston日志]
 NodeCron[Node-cron定时器]
 FormData[Form-data表单]
+LowDB[LowDB JSON数据库]
+DndKit[@dnd-kit 排序库]
+Antd[Ant Design UI]
 end
 subgraph "配置依赖"
 DotEnv[Dotenv环境变量]
@@ -437,6 +840,11 @@ Antd[Ant Design UI]
 React[React框架]
 ReactDOM[React DOM]
 end
+subgraph "MCP集成"
+MCP[MCP协议]
+OpenClaw[OpenClaw客户端]
+Feishu[飞书集成]
+end
 AIPublishService --> Axios
 AIPublishService --> Winston
 ContentGenerator --> Axios
@@ -448,6 +856,11 @@ DeepSeekClient --> Axios
 DeepSeekClient --> Winston
 ExpressServer --> Winston
 ExpressServer --> NodeCron
+MCP --> OpenClaw
+MCP --> Feishu
+CreationTaskService --> LowDB
+ImageTextEditor --> DndKit
+HistoryDrawer --> Antd
 ```
 
 **图表来源**
@@ -460,6 +873,8 @@ ExpressServer --> NodeCron
 - **DeepSeek API**：用于需求分析和文案生成
 - **豆包AI API**：用于图片和视频生成
 - **抖音开放平台**：用于内容发布和管理
+- **OpenClaw API**：用于AI平台集成
+- **飞书API**：用于企业微信平台集成
 
 **章节来源**
 - [config/default.ts:42-60](file://config/default.ts#L42-L60)
@@ -481,12 +896,15 @@ ExpressServer --> NodeCron
 - **配置缓存**：AI客户端配置在初始化时缓存
 - **任务状态缓存**：近期任务状态存储在内存中
 - **文件缓存**：生成的内容文件存储在本地临时目录
+- **数据库缓存**：LowDB自动缓存数据库文件
 
 ### 错误恢复
 
 - **重试机制**：网络请求具备自动重试能力
 - **降级策略**：当AI服务不可用时提供基本功能
 - **状态监控**：实时监控各组件的健康状态
+- **防御性检查**：防止配置对象为undefined的错误
+- **任务持久化**：服务器重启后可恢复未完成的任务
 
 ## 故障排除指南
 
@@ -503,6 +921,9 @@ ExpressServer --> NodeCron
 **问题**：抖音认证失败
 **解决方案**：检查clientKey、clientSecret和redirectUri配置
 
+**问题**：OpenClaw集成失败
+**解决方案**：检查MCP服务器配置和CLAWOPS_API_URL环境变量
+
 #### 任务执行问题
 
 **问题**：内容生成超时
@@ -510,6 +931,9 @@ ExpressServer --> NodeCron
 
 **问题**：任务状态查询失败
 **解决方案**：确认任务ID正确性和服务可用性
+
+**问题**：任务持久化失败
+**解决方案**：检查数据库文件权限和磁盘空间
 
 #### 文件处理问题
 
@@ -519,10 +943,26 @@ ExpressServer --> NodeCron
 **问题**：文件格式不支持
 **解决方案**：确认文件扩展名在支持列表中
 
+#### 错误处理问题
+
+**问题**：出现'Cannot read properties of undefined (reading DEEPSEEK)'错误
+**解决方案**：检查AI配置是否正确加载，系统已增加防御性配置检查
+
+**问题**：发布失败但错误消息不准确
+**解决方案**：查看详细的错误分类和建议操作
+
+**问题**：历史记录无法加载
+**解决方案**：检查数据库文件完整性，重启服务后重试
+
+**问题**：草稿无法恢复
+**解决方案**：确认草稿ID正确，检查数据库连接状态
+
 **章节来源**
 - [src/api/ai/deepseek-client.ts:61-81](file://src/api/ai/deepseek-client.ts#L61-L81)
 - [src/api/ai/doubao-client.ts:84-114](file://src/api/ai/doubao-client.ts#L84-L114)
 - [config/default.ts:17-24](file://config/default.ts#L17-L24)
+- [src/utils/error-classifier.ts:168-193](file://src/utils/error-classifier.ts#L168-L193)
+- [web/server/src/database/index.ts:42-45](file://web/server/src/database/index.ts#L42-L45)
 
 ## 结论
 
@@ -534,6 +974,10 @@ AI发布服务是一个功能完整、架构清晰的人工智能内容创作和
 - **用户体验友好**：提供直观的图形界面和流畅的操作体验
 - **功能完整性**：覆盖内容创作的全流程需求
 - **可扩展性强**：模块化设计便于功能扩展和维护
+- **集成能力强**：支持OpenClaw、飞书等第三方平台集成
+- **稳定性高**：完善的错误处理和重试机制
+- **持久化可靠**：支持服务器重启后的任务历史查询和恢复
+- **开发效率高**：完善的草稿管理和模板功能
 
 ### 发展方向
 
@@ -541,5 +985,12 @@ AI发布服务是一个功能完整、架构清晰的人工智能内容创作和
 - **平台扩展**：支持更多社交媒体平台的内容发布
 - **智能化程度提升**：增加更多智能化的内容推荐和优化功能
 - **性能优化**：进一步提升系统的响应速度和稳定性
+- **生态集成**：深化与OpenClaw、飞书等平台的集成深度
+- **用户体验优化**：持续改进界面设计和交互体验
 
 该系统为内容创作者提供了强大的技术支持，能够显著提高内容创作的效率和质量，是现代数字营销的重要工具。
+
+**章节来源**
+- [src/services/ai-publish-service.ts:43-377](file://src/services/ai-publish-service.ts#L43-L377)
+- [web/server/src/services/creation-task-service.ts:1-388](file://web/server/src/services/creation-task-service.ts#L1-L388)
+- [src/utils/error-classifier.ts:1-296](file://src/utils/error-classifier.ts#L1-L296)
