@@ -36,6 +36,7 @@
 - [web/server/src/services/creation-task-service.ts](file://web/server/src/services/creation-task-service.ts)
 - [web/client/src/hooks/useCreationWorkflow.ts](file://web/client/src/hooks/useCreationWorkflow.ts)
 - [web/client/src/components/ai-creator/WorkflowSteps.tsx](file://web/client/src/components/ai-creator/WorkflowSteps.tsx)
+- [src/services/ai-publish-service.ts](file://src/services/ai-publish-service.ts)
 </cite>
 
 ## 更新摘要
@@ -661,7 +662,7 @@ Display --> Filter[筛选任务状态]
 Filter --> Stats[显示统计信息]
 Stats --> RealTime[实时刷新机制]
 RealTime --> ActiveAITasks{有进行中的AI任务?}
-ActiveAITasks --> |是| FastRefresh[3秒刷新]
+ActiveAITasks --> |是| FastRefresh[5秒刷新]
 ActiveAITasks --> |否| SlowRefresh[30秒刷新]
 FastRefresh --> Load
 SlowRefresh --> Load
@@ -738,7 +739,7 @@ TaskList->>FetchTasks : 初次加载
 FetchTasks->>HasActiveAITasks : 检查AI任务状态
 HasActiveAITasks-->>FetchTasks : 返回状态
 FetchTasks->>Interval : 设置刷新间隔
-Note over Interval : 3秒有进行中AI任务
+Note over Interval : 5秒有进行中AI任务
 Note over Interval : 30秒无进行中AI任务
 Interval->>FetchTasks : 定时触发
 FetchTasks->>HasActiveAITasks : 重新检查状态
@@ -775,6 +776,21 @@ AI任务在TaskList页面中提供了丰富的可视化展示：
 - [web/client/src/pages/TaskList.tsx:356-372](file://web/client/src/pages/TaskList.tsx#L356-L372)
 - [web/client/src/pages/TaskList.tsx:284-297](file://web/client/src/pages/TaskList.tsx#L284-L297)
 - [web/client/src/pages/TaskList.tsx:380-401](file://web/client/src/pages/TaskList.tsx#L380-L401)
+
+### 任务筛选和统计功能
+
+TaskList页面提供了全面的任务筛选和统计功能：
+
+- **类型筛选**: 支持AI创作任务和定时发布任务的单独筛选
+- **状态筛选**: 支持全部状态、进行中、已完成、失败、已取消的筛选
+- **搜索功能**: 支持按任务ID进行精确搜索
+- **统计卡片**: 提供总任务数、待执行、已完成、失败任务的可视化统计
+- **批量操作**: 支持批量重试失败的定时发布任务
+
+**章节来源**
+- [web/client/src/pages/TaskList.tsx:352-361](file://web/client/src/pages/TaskList.tsx#L352-L361)
+- [web/client/src/pages/TaskList.tsx:363-372](file://web/client/src/pages/TaskList.tsx#L363-L372)
+- [web/client/src/pages/TaskList.tsx:686-696](file://web/client/src/pages/TaskList.tsx#L686-L696)
 
 ## 本地URL系统
 
