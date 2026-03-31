@@ -13,6 +13,7 @@ export interface CreationTask {
   status: 'draft' | 'analyzing' | 'generating' | 'copywriting' | 'preview' | 'publishing' | 'completed' | 'failed';
   requirement: string;
   contentTypePreference?: 'image' | 'video' | 'auto';
+  videoDuration?: number;
   analysis?: {
     contentType: 'image' | 'video';
     theme: string;
@@ -65,7 +66,11 @@ export interface UseCreationWorkflowReturn {
   nextAction: NextActionSuggestion | null;
   
   // 流程控制
-  startNew: (requirement: string, contentTypePreference?: 'image' | 'video' | 'auto') => Promise<void>;
+  startNew: (
+    requirement: string,
+    contentTypePreference?: 'image' | 'video' | 'auto',
+    videoDuration?: number
+  ) => Promise<void>;
   startFromTemplate: (templateId: string) => Promise<void>;
   resumeFromDraft: (draftId: string) => Promise<void>;
   executeCurrentStep: () => Promise<void>;
@@ -81,6 +86,7 @@ export interface UseCreationWorkflowReturn {
   // 更新函数
   updateRequirement: (requirement: string) => void;
   updateContentType: (type: 'image' | 'video' | 'auto') => void;
+  updateVideoDuration: (duration: number) => void;
   updateCopywriting: (copywriting: CreationTask['copywriting']) => void;
 }
 
@@ -117,7 +123,8 @@ export function useCreationWorkflow(): UseCreationWorkflowReturn {
   // 开始新的创作流程
   const startNew = useCallback(async (
     requirement: string, 
-    contentTypePreference?: 'image' | 'video' | 'auto'
+    contentTypePreference?: 'image' | 'video' | 'auto',
+    videoDuration?: number
   ) => {
     setIsLoading(true);
     setError(null);
@@ -126,6 +133,7 @@ export function useCreationWorkflow(): UseCreationWorkflowReturn {
       const response = await aiApi.startWorkflow({
         requirement,
         contentTypePreference,
+        videoDuration,
       });
       
       if (response.data.success) {
@@ -216,7 +224,9 @@ export function useCreationWorkflow(): UseCreationWorkflowReturn {
     setTask(prev => prev ? { ...prev, status: statusMap[step] || prev.status } : null);
     
     try {
-      const response = await aiApi.executeStep(task.id, step);
+      const response = await aiApi.executeStep(task.id, step, step === 'generate'
+        ? { videoDuration: task.videoDuration }
+        : undefined);
       
       if (response.data.success) {
         setTask(response.data.data.task);
@@ -277,6 +287,7 @@ export function useCreationWorkflow(): UseCreationWorkflowReturn {
         id: task.id,
         requirement: task.requirement,
         contentTypePreference: task.contentTypePreference,
+        videoDuration: task.videoDuration,
         analysis: task.analysis,
         content: task.content,
         copywriting: task.copywriting,
@@ -313,6 +324,10 @@ export function useCreationWorkflow(): UseCreationWorkflowReturn {
   // 更新内容类型偏好
   const updateContentType = useCallback((type: 'image' | 'video' | 'auto') => {
     setTask(prev => prev ? { ...prev, contentTypePreference: type } : null);
+  }, []);
+
+  const updateVideoDuration = useCallback((duration: number) => {
+    setTask(prev => prev ? { ...prev, videoDuration: duration } : null);
   }, []);
 
   // 更新文案
@@ -352,6 +367,7 @@ export function useCreationWorkflow(): UseCreationWorkflowReturn {
     // 更新函数
     updateRequirement,
     updateContentType,
+    updateVideoDuration,
     updateCopywriting,
   };
 }

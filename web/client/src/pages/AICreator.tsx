@@ -65,9 +65,11 @@ import { aiApi } from '../api/client';
 const { Text, Paragraph, Title } = Typography;
 const { TextArea } = Input;
 const { Panel } = Collapse;
+const DEFAULT_VIDEO_DURATION = 5;
+const VIDEO_DURATION_OPTIONS = [5, 10, 15, 30, 60] as const;
 
-// 营销角度图标映射
-const marketingAngleIcons: Record<string, React.ReactNode> = {
+// 内容切入点图标映射
+const contentInsightIcons: Record<string, React.ReactNode> = {
   '痛点式': <AlertOutlined style={{ color: '#f5222d' }} />,
   '渴望式': <StarOutlined style={{ color: '#fa8c16' }} />,
   '好奇式': <BulbOutlined style={{ color: '#1677ff' }} />,
@@ -82,28 +84,28 @@ const marketingAngleIcons: Record<string, React.ReactNode> = {
   return '#f5222d';
 };
 
-// 互动等级映射
+// 表现等级映射
 const engagementConfig = {
-  high: { color: '#52c41a', text: '高互动潜力' },
-  medium: { color: '#fa8c16', text: '中等互动潜力' },
-  low: { color: '#f5222d', text: '互动潜力待提升' },
+  high: { color: '#52c41a', text: '表现较好' },
+  medium: { color: '#fa8c16', text: '表现稳定' },
+  low: { color: '#f5222d', text: '仍可优化' },
 };
 
-// 快捷模板 - 扩展为12个分场景营销模板
+// 快捷模板 - 面向常见抖音创作与发布场景
 const getQuickTemplates = (type: 'auto' | 'image' | 'video') => {
   const w = type === 'image' ? '图片' : (type === 'video' ? '视频' : '内容');
   return [
     { label: '餐饮美食', value: `制作一个餐饮美食${w}，突出小龙虾麺辣鲜香的特色和口感` },
-    { label: '限时促销', value: `制作限时促销${w}，突出居家优惠力度，名额有限算尽` },
+    { label: '限时活动', value: `制作限时活动${w}，突出套餐亮点、参与方式和截止时间` },
     { label: '探店打卡', value: `创作网红探店${w}，真实测评枯山小龙虾隐藏菜单揭秘` },
     { label: '新品发布', value: `制作新品首发${w}，全新口味惊喜揭晓，先到先得帕山小龙虾` },
-    { label: '节日营销', value: `制作节日限定品版${w}，节日特供礼盒送礼送心意的最佳选择` },
+    { label: '节日主题', value: `制作节日主题${w}，突出限定口味、节日氛围和适合分享的场景` },
     { label: '品牌故事', value: `创作品牌故事${w}，展示坑位山小龙虾工匠匹心精神和十年小龙虾心得` },
-    { label: '用户证言', value: `制作原汁鸿顾客来店好评${w}，展示真实顾客口碑，让数据说话` },
+    { label: '用户反馈', value: `制作原汁鸿顾客来店好评${w}，展示真实顾客反馈与到店体验` },
     { label: '教程干货', value: `制作小龙虾处理教程${w}，3步学会最鲜小龙虾做法，收藏备用` },
     { label: '对比测评', value: `制作南昌鉲酱小龙虾 PK 武汉小龙虾${w}，真实常2家对比，不夸大` },
     { label: '幕后揭秘', value: `拍摄小龙虾封山制作全过程${w}，揭秘珍宝配方，品质看得见` },
-    { label: '福利互动', value: `制作福利互动${w}，关注留言抽奖，送出小龙虾大礼包` },
+    { label: '福利互动', value: `制作福利互动${w}，清楚说明参与方式、福利内容和开奖时间` },
     { label: '情感共鸣', value: `创作情感共鸣${w}，那个让你念念不忘的麺辣味道和兒时记忆` },
   ];
 };
@@ -111,6 +113,7 @@ const getQuickTemplates = (type: 'auto' | 'image' | 'video') => {
 const AICreator: React.FC = () => {
   const [form] = Form.useForm();
   const [contentType, setContentType] = useState<'auto' | 'image' | 'video'>('auto');
+  const [videoDuration, setVideoDuration] = useState<number>(DEFAULT_VIDEO_DURATION);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   
   // 抽屉状态
@@ -138,6 +141,7 @@ const AICreator: React.FC = () => {
     saveDraft,
     reset,
     canSaveDraft,
+    updateVideoDuration,
   } = useCreationWorkflow();
 
   // 复制到剪贴板
@@ -155,8 +159,12 @@ const AICreator: React.FC = () => {
       message.error('请输入创作需求');
       return;
     }
-    await startNew(requirement, contentType === 'auto' ? undefined : contentType);
-  }, [form, contentType, startNew]);
+    await startNew(
+      requirement,
+      contentType === 'auto' ? undefined : contentType,
+      videoDuration
+    );
+  }, [form, contentType, startNew, videoDuration]);
 
   // 从草稿恢复
   const handleResumeDraft = useCallback(async (draft: any) => {
@@ -165,7 +173,11 @@ const AICreator: React.FC = () => {
     if (draft.contentTypePreference) {
       setContentType(draft.contentTypePreference);
     }
-  }, [resumeFromDraft, form]);
+    if (draft.videoDuration) {
+      setVideoDuration(draft.videoDuration);
+      updateVideoDuration(draft.videoDuration);
+    }
+  }, [resumeFromDraft, form, updateVideoDuration]);
 
   // 从模板开始
   const handleUseTemplate = useCallback(async (template: any) => {
@@ -187,6 +199,7 @@ const AICreator: React.FC = () => {
   const handleReset = useCallback(() => {
     form.resetFields();
     setContentType('auto');
+    setVideoDuration(DEFAULT_VIDEO_DURATION);
     reset();
   }, [form, reset]);
 
@@ -310,11 +323,11 @@ const AICreator: React.FC = () => {
         setMarketingEvaluation(response.data.data);
         const score = response.data.data.score;
         if (score >= 75) {
-          message.success(`营销评分：${score}分 ！内容具有较高营销潜力`);
+          message.success(`内容评分：${score}分，整体表现较好`);
         } else if (score >= 50) {
-          message.info(`营销评分：${score}分，评估建议可进一步优化`);
+          message.info(`内容评分：${score}分，可根据建议继续优化`);
         } else {
-          message.warning(`营销评分：${score}分，建议根据建议优化文案`);
+          message.warning(`内容评分：${score}分，建议根据提示调整文案`);
         }
       } else {
         message.error(response.data.error || '评估失败');
@@ -490,6 +503,32 @@ const AICreator: React.FC = () => {
                 </Radio.Group>
               </Form.Item>
 
+              {contentType !== 'image' && (
+                <Form.Item
+                  label="视频时长"
+                  extra={contentType === 'auto' ? '当内容类型最终识别为视频时生效' : '用于控制生成视频的目标时长'}
+                  style={{ marginBottom: 24 }}
+                >
+                  <Radio.Group
+                    value={videoDuration}
+                    onChange={(e) => {
+                      const duration = Number(e.target.value);
+                      setVideoDuration(duration);
+                      updateVideoDuration(duration);
+                    }}
+                    optionType="button"
+                    buttonStyle="solid"
+                    disabled={isLoading}
+                  >
+                    {VIDEO_DURATION_OPTIONS.map((duration) => (
+                      <Radio.Button key={duration} value={duration}>
+                        {duration}s
+                      </Radio.Button>
+                    ))}
+                  </Radio.Group>
+                </Form.Item>
+              )}
+
               {/* 操作按钮 */}
               {!task && (
                 <Space size={12}>
@@ -567,16 +606,16 @@ const AICreator: React.FC = () => {
                 </Col>
               </Row>
 
-              {/* 营销策略卡片 */}
+              {/* 内容优化卡片 */}
               {(result.analysis as any).marketingAngle && (
                 <>
                   <Divider style={{ margin: '16px 0' }} />
                   <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12, fontWeight: 600 }}>
                     <RiseOutlined style={{ marginRight: 6, color: '#1677ff' }} />
-                    营销策略建议
+                    内容优化建议
                   </div>
                   <Row gutter={[16, 12]}>
-                    {/* 营销角度 */}
+                    {/* 内容切入点 */}
                     <Col span={24}>
                       <div style={{
                         padding: '10px 14px',
@@ -588,21 +627,21 @@ const AICreator: React.FC = () => {
                         gap: 10,
                       }}>
                         <div style={{ flexShrink: 0, marginTop: 2 }}>
-                          {marketingAngleIcons[(result.analysis as any).marketingAngle?.split('（')[0]] || <AimOutlined style={{ color: '#fa8c16' }} />}
+                          {contentInsightIcons[(result.analysis as any).marketingAngle?.split('（')[0]] || <AimOutlined style={{ color: '#fa8c16' }} />}
                         </div>
                         <div>
-                          <div style={{ fontSize: 12, color: '#8c6d00', marginBottom: 4 }}>营销角度</div>
+                          <div style={{ fontSize: 12, color: '#8c6d00', marginBottom: 4 }}>内容切入点</div>
                           <Text style={{ fontSize: 13 }}>{(result.analysis as any).marketingAngle}</Text>
                         </div>
                       </div>
                     </Col>
 
-                    {/* 情感触发词 */}
+                    {/* 表达关键词 */}
                     {(result.analysis as any).emotionalTriggers?.length > 0 && (
                       <Col span={24}>
                         <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
                           <FireOutlined style={{ marginRight: 4, color: '#f5222d' }} />
-                          情感触发词
+                          表达关键词
                         </div>
                         <Space wrap size={6}>
                           {(result.analysis as any).emotionalTriggers.map((trigger: string, i: number) => (
@@ -664,12 +703,12 @@ const AICreator: React.FC = () => {
                       </Col>
                     )}
 
-                    {/* 受众痛点 */}
+                    {/* 用户关注点 */}
                     {(result.analysis as any).audiencePainPoints?.length > 0 && (
                       <Col span={24}>
                         <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
                           <AlertOutlined style={{ marginRight: 4, color: '#f5222d' }} />
-                          目标受众痛点
+                          用户关注点
                         </div>
                         <Space wrap size={6}>
                           {(result.analysis as any).audiencePainPoints.map((pain: string, i: number) => (
@@ -868,7 +907,7 @@ const AICreator: React.FC = () => {
                   </Space>
                 </div>
 
-                {/* 营销增强信息：行动号召 + 备选标题 */}
+                {/* 发布辅助信息：行动号召 + 备选标题 */}
                 {((result.copywriting as any).callToAction || (result.copywriting as any).alternativeTitles?.length > 0) && (
                   <>
                     <Divider style={{ margin: '14px 0' }} />
@@ -932,12 +971,12 @@ const AICreator: React.FC = () => {
                       </div>
                     )}
 
-                    {/* 营销评分（AI自评） */}
+                    {/* 内容评分（AI自评） */}
                     {(result.copywriting as any).marketingScore != null && (
                       <div style={{ marginBottom: 14 }}>
                         <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
                           <BarChartOutlined style={{ marginRight: 4, color: '#52c41a' }} />
-                          AI初始评分
+                          AI 内容评分
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           <Progress
@@ -963,7 +1002,7 @@ const AICreator: React.FC = () => {
                 
                 <Divider style={{ margin: '16px 0' }} />
                 
-                {/* 质量校验和营销评估按钮 */}
+                {/* 质量校验和表现评估按钮 */}
                 <Space style={{ width: '100%' }} direction="vertical" size={8}>
                   <Button
                     type="default"
@@ -982,7 +1021,7 @@ const AICreator: React.FC = () => {
                     loading={marketingEvaluating}
                     block
                   >
-                    评估营销潜力
+                    评估内容表现
                   </Button>
                 </Space>
               </Card>
@@ -1001,13 +1040,13 @@ const AICreator: React.FC = () => {
               </div>
             )}
 
-            {/* 营销潜力评估结果 */}
+            {/* 内容表现评估结果 */}
             {marketingEvaluation && (
               <Card
                 title={
                   <Space>
                     <RiseOutlined style={{ color: '#1677ff' }} />
-                    <span>营销潜力评估</span>
+                    <span>内容表现评估</span>
                     <Badge
                       count={`${marketingEvaluation.score}分`}
                       style={{
@@ -1027,9 +1066,9 @@ const AICreator: React.FC = () => {
                 {/* 各维度评分 */}
                 <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
                   {[
-                    { label: '标题吸引力', value: marketingEvaluation.dimensions.titleAttractiveness },
-                    { label: '情感共鸣', value: marketingEvaluation.dimensions.emotionalResonance },
-                    { label: '行动引导', value: marketingEvaluation.dimensions.callToActionStrength },
+                  { label: '标题吸引力', value: marketingEvaluation.dimensions.titleAttractiveness },
+                    { label: '内容表达', value: marketingEvaluation.dimensions.emotionalResonance },
+                    { label: '行动提示', value: marketingEvaluation.dimensions.callToActionStrength },
                     { label: '话题质量', value: marketingEvaluation.dimensions.hashtagQuality },
                   ].map(({ label, value }) => (
                     <Col span={12} key={label}>
@@ -1120,7 +1159,7 @@ const AICreator: React.FC = () => {
                   loading={marketingEvaluating}
                   style={{ marginTop: 12 }}
                 >
-                  重新评估
+                  重新评估表现
                 </Button>
               </Card>
             )}

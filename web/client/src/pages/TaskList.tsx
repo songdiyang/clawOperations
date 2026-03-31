@@ -153,7 +153,7 @@ const TaskList: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<'all' | 'publish' | 'ai'>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   
-  // 营销数据分析状态
+  // 创作数据分析状态
   const [analytics, setAnalytics] = useState<any>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   
@@ -241,7 +241,7 @@ const TaskList: React.FC = () => {
     }
   }, [initialLoaded]);
 
-  // 获取营销数据分析
+  // 获取创作数据分析
   const fetchAnalytics = useCallback(async () => {
     setAnalyticsLoading(true);
     try {
@@ -720,7 +720,7 @@ const TaskList: React.FC = () => {
         </Col>
       </Row>
 
-      {/* 营销数据分析面板 */}
+      {/* 创作数据分析面板 */}
       {analytics && (
         <Card
           title={
@@ -771,11 +771,11 @@ const TaskList: React.FC = () => {
               </div>
             </Col>
 
-            {/* 平均营销评分 */}
+            {/* 平均内容评分 */}
             <Col xs={12} sm={6}>
               {analytics.averageMarketingScore != null ? (
                 <Statistic
-                  title="平均营销评分"
+                  title="平均内容评分"
                   value={analytics.averageMarketingScore}
                   suffix="/ 100"
                   valueStyle={{
@@ -786,7 +786,7 @@ const TaskList: React.FC = () => {
                 />
               ) : (
                 <div>
-                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>平均营销评分</div>
+                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>平均内容评分</div>
                   <span style={{ color: '#9ca3af', fontSize: 13 }}>暂无评分数据</span>
                 </div>
               )}

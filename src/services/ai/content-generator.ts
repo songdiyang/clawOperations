@@ -39,6 +39,8 @@ export type ProgressCallback = (progress: {
 export interface GenerateOptions {
   /** 参考图 URL */
   referenceImageUrl?: string;
+  /** 视频时长（秒） */
+  videoDuration?: number;
   /** 进度回调 */
   onProgress?: ProgressCallback;
 }
@@ -99,7 +101,7 @@ export class ContentGenerator {
       if (analysis.contentType === 'image') {
         content = await this.generateImage(analysis, onProgress, referenceImageUrl);
       } else {
-        content = await this.generateVideo(analysis, onProgress, referenceImageUrl);
+        content = await this.generateVideo(analysis, onProgress, referenceImageUrl, opts.videoDuration);
       }
 
       onProgress?.({
@@ -157,7 +159,8 @@ export class ContentGenerator {
   private async generateVideo(
     analysis: RequirementAnalysis,
     onProgress?: ProgressCallback,
-    referenceImageUrl?: string
+    referenceImageUrl?: string,
+    videoDuration?: number
   ): Promise<GeneratedContent> {
     const prompt = analysis.videoPrompt || this.buildDefaultVideoPrompt(analysis);
 
@@ -175,7 +178,7 @@ export class ContentGenerator {
     });
 
     const content = await this.doubaoClient.generateVideo(prompt, {
-      duration: this.videoDuration,
+      duration: videoDuration || this.videoDuration,
       resolution: this.videoResolution,
       referenceImageUrl,
     });

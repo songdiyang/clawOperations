@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS creation_tasks (
   status VARCHAR(32) NOT NULL DEFAULT 'draft',
   requirement TEXT NULL,
   content_type VARCHAR(32) NULL,
+  video_duration INT NULL,
   analysis LONGTEXT NULL,
   content LONGTEXT NULL,
   copywriting LONGTEXT NULL,
@@ -176,6 +177,7 @@ async function ensureColumn(
 async function ensureLegacySchemaCompatibility(p: Pool): Promise<void> {
   await ensureColumn(p, 'creation_tasks', 'task_type', "ENUM('draft','history') NOT NULL DEFAULT 'draft' AFTER `id`");
   await ensureColumn(p, 'creation_tasks', 'content_type', 'VARCHAR(32) NULL AFTER `requirement`');
+  await ensureColumn(p, 'creation_tasks', 'video_duration', 'INT NULL AFTER `content_type`');
   await ensureColumn(p, 'creation_tasks', 'publish_result', 'LONGTEXT NULL AFTER `copywriting`');
   await ensureColumn(p, 'creation_tasks', 'completed_at', 'DATETIME NULL AFTER `reference_image_url`');
 

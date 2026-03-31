@@ -32,6 +32,7 @@ function rowToTask(row: RowDataPacket): CreationTask {
     status: row.status as CreationTaskStatus,
     requirement: (row.requirement as string) || '',
     contentTypePreference: row.content_type as 'image' | 'video' | 'auto' | undefined,
+    videoDuration: row.video_duration as number | undefined,
     referenceImageUrl: row.reference_image_url as string | undefined,
     analysis: parseJson(row.analysis as string),
     content: parseJson(row.content as string),
@@ -76,11 +77,12 @@ class CreationTaskService {
       if (existing) {
         const merged: CreationTask = { ...existing, ...data, updatedAt: nowIso() };
         await pool.execute(
-          'UPDATE creation_tasks SET status=?, requirement=?, content_type=?, analysis=?, content=?, copywriting=?, publish_result=?, progress=?, current_step_message=?, error_message=?, can_resume=?, last_completed_step=?, reference_image_url=?, updated_at=? WHERE id=? AND task_type=?',
+          'UPDATE creation_tasks SET status=?, requirement=?, content_type=?, video_duration=?, analysis=?, content=?, copywriting=?, publish_result=?, progress=?, current_step_message=?, error_message=?, can_resume=?, last_completed_step=?, reference_image_url=?, updated_at=? WHERE id=? AND task_type=?',
           [
             merged.status,
             merged.requirement,
             merged.contentTypePreference || null,
+            merged.videoDuration ?? null,
             merged.analysis ? JSON.stringify(merged.analysis) : null,
             merged.content ? JSON.stringify(merged.content) : null,
             merged.copywriting ? JSON.stringify(merged.copywriting) : null,
@@ -106,6 +108,7 @@ class CreationTaskService {
       status: 'draft',
       requirement: data.requirement || '',
       contentTypePreference: data.contentTypePreference,
+      videoDuration: data.videoDuration,
       referenceImageUrl: data.referenceImageUrl,
       analysis: data.analysis,
       content: data.content,
@@ -121,10 +124,11 @@ class CreationTaskService {
     };
 
     await pool.execute(
-      'INSERT INTO creation_tasks (id, task_type, status, requirement, content_type, analysis, content, copywriting, publish_result, progress, current_step_message, error_message, can_resume, last_completed_step, reference_image_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO creation_tasks (id, task_type, status, requirement, content_type, video_duration, analysis, content, copywriting, publish_result, progress, current_step_message, error_message, can_resume, last_completed_step, reference_image_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         draft.id, 'draft', draft.status, draft.requirement,
         draft.contentTypePreference || null,
+        draft.videoDuration ?? null,
         draft.analysis ? JSON.stringify(draft.analysis) : null,
         draft.content ? JSON.stringify(draft.content) : null,
         draft.copywriting ? JSON.stringify(draft.copywriting) : null,
@@ -190,10 +194,11 @@ class CreationTaskService {
     };
 
     await pool.execute(
-      'INSERT INTO creation_tasks (id, task_type, status, requirement, content_type, analysis, content, copywriting, publish_result, progress, current_step_message, error_message, can_resume, last_completed_step, reference_image_url, completed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO creation_tasks (id, task_type, status, requirement, content_type, video_duration, analysis, content, copywriting, publish_result, progress, current_step_message, error_message, can_resume, last_completed_step, reference_image_url, completed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         historyItem.id, 'history', historyItem.status, historyItem.requirement,
         historyItem.contentTypePreference || null,
+        historyItem.videoDuration ?? null,
         historyItem.analysis ? JSON.stringify(historyItem.analysis) : null,
         historyItem.content ? JSON.stringify(historyItem.content) : null,
         historyItem.copywriting ? JSON.stringify(historyItem.copywriting) : null,
@@ -340,14 +345,14 @@ class CreationTaskService {
       case 1:
         return {
           action: 'generate',
-          message: `生成推广${task.analysis?.contentType === 'image' ? '图片' : '视频'}`,
+          message: `生成${task.analysis?.contentType === 'image' ? '图片' : '视频'}内容`,
           estimatedTime: task.analysis?.contentType === 'image' ? '约 30 秒' : '约 2-3 分钟',
           alternatives: ['保存草稿稍后继续', '重新分析需求', '修改内容类型'],
           tips: [task.analysis?.contentType === 'video' ? '视频生成需要较长时间，请耐心等待' : '图片生成通常很快', '生成过程中您可以查看分析结果'],
         };
       case 2:
         return {
-          action: 'copywriting', message: '生成推广文案', estimatedTime: '约 10-15 秒',
+          action: 'copywriting', message: '生成发布文案', estimatedTime: '约 10-15 秒',
           alternatives: ['保存草稿稍后继续', '重新生成内容'],
           tips: ['文案将根据分析结果自动生成', '生成后可以手动编辑调整'],
         };

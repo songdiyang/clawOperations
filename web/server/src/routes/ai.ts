@@ -52,6 +52,16 @@ let requirementAnalyzer: RequirementAnalyzer | null = null;
 let contentGenerator: ContentGenerator | null = null;
 let copywritingGenerator: CopywritingGenerator | null = null;
 let cachedAIConfigSignature: string | null = null;
+const ALLOWED_VIDEO_DURATIONS = [5, 10, 15, 30, 60] as const;
+
+function normalizeVideoDuration(value: unknown): number | undefined {
+  if (typeof value !== 'number') {
+    return undefined;
+  }
+  return ALLOWED_VIDEO_DURATIONS.includes(value as (typeof ALLOWED_VIDEO_DURATIONS)[number])
+    ? value
+    : undefined;
+}
 
 function resetAIServices() {
   aiPublishService = null;
@@ -246,7 +256,8 @@ router.post('/analyze', async (req: Request, res: Response) => {
  */
 router.post('/generate', async (req: Request, res: Response) => {
   try {
-    const { analysis } = req.body;
+    const { analysis, videoDuration } = req.body;
+    const normalizedVideoDuration = normalizeVideoDuration(videoDuration);
 
     if (!analysis || !analysis.contentType) {
       return res.status(400).json({
@@ -256,7 +267,9 @@ router.post('/generate', async (req: Request, res: Response) => {
     }
 
     const generator = getContentGenerator();
-    const content = await generator.generate(analysis);
+    const content = await generator.generate(analysis, {
+      videoDuration: normalizedVideoDuration,
+    });
 
     res.json({
       success: true,
@@ -926,7 +939,8 @@ router.post('/templates/:id/use', async (req: Request, res: Response) => {
  */
 router.post('/workflow/start', async (req: Request, res: Response) => {
   try {
-    const { requirement, contentTypePreference, templateId } = req.body;
+    const { requirement, contentTypePreference, templateId, videoDuration } = req.body;
+    const normalizedVideoDuration = normalizeVideoDuration(videoDuration);
     
     let taskRequirement = requirement;
     let taskContentType = contentTypePreference;
@@ -953,6 +967,7 @@ router.post('/workflow/start', async (req: Request, res: Response) => {
     const task = await creationTaskService.saveDraft({
       requirement: taskRequirement,
       contentTypePreference: taskContentType,
+      videoDuration: normalizedVideoDuration,
       referenceImageUrl: taskReferenceImageUrl,
       status: 'draft',
       lastCompletedStep: 0,
@@ -984,7 +999,8 @@ router.post('/workflow/start', async (req: Request, res: Response) => {
  */
 router.post('/workflow/step', async (req: Request, res: Response) => {
   try {
-    const { taskId, step } = req.body;
+    const { taskId, step, videoDuration } = req.body;
+    const normalizedVideoDuration = normalizeVideoDuration(videoDuration);
     
     if (!taskId) {
       return res.status(400).json({
@@ -1042,14 +1058,16 @@ router.post('/workflow/step', async (req: Request, res: Response) => {
         // 更新状态为生成中
         task = (await creationTaskService.updateDraft(taskId, {
           status: 'generating',
+          videoDuration: normalizedVideoDuration ?? task.videoDuration,
           currentStepMessage: `正在生成${task.analysis.contentType === 'image' ? '图片' : '视频'}...`,
           progress: 35,
         }))!;
-        
+
         // 执行生成，传递参考图 URL
         const generator = getContentGenerator();
         const content = await generator.generate(task.analysis!, {
           referenceImageUrl: task.referenceImageUrl,
+          videoDuration: normalizedVideoDuration ?? task.videoDuration,
         });
         
         // 更新任务

@@ -319,6 +319,8 @@ export interface AIPublishConfig {
   scheduleTime?: string;
   /** 内容类型偏好 */
   contentTypePreference?: 'image' | 'video' | 'auto';
+  /** 视频时长（秒） */
+  videoDuration?: number;
   /** 覆盖发布选项 */
   overrides?: Partial<VideoPublishOptions>;
 }
@@ -392,6 +394,8 @@ export interface CreationTask {
   requirement: string;
   /** 内容类型偏好 */
   contentTypePreference?: 'image' | 'video' | 'auto';
+  /** 视频时长（秒） */
+  videoDuration?: number;
   /** 参考图 URL */
   referenceImageUrl?: string;
   /** 需求分析结果 */

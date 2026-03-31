@@ -342,8 +342,8 @@ export const aiApi = {
     client.post('/ai/analyze', { input, contentTypePreference }),
   
   /** 生成内容（图片/视频） - 使用长超时 */
-  generate: (analysis: any) =>
-    aiClient.post('/ai/generate', { analysis }),
+  generate: (analysis: any, options?: { videoDuration?: number }) =>
+    aiClient.post('/ai/generate', { analysis, ...options }),
   
   /** 生成文案 */
   getCopywriting: (analysis: any) =>
@@ -356,12 +356,14 @@ export const aiApi = {
   /** 一键创建（不发布） */
   create: (input: string, config?: {
     contentTypePreference?: 'image' | 'video' | 'auto';
+    videoDuration?: number;
     overrides?: any;
   }) => client.post('/ai/create', { input, config }),
   
   /** 一键创建并发布 */
   createAndPublish: (input: string, config?: {
     contentTypePreference?: 'image' | 'video' | 'auto';
+    videoDuration?: number;
     scheduleTime?: string;
     overrides?: any;
   }) => client.post('/ai/publish', { input, config }),
@@ -380,6 +382,7 @@ export const aiApi = {
     id?: string;
     requirement: string;
     contentTypePreference?: 'image' | 'video' | 'auto';
+    videoDuration?: number;
     analysis?: any;
     content?: any;
     copywriting?: any;
@@ -446,12 +449,16 @@ export const aiApi = {
   startWorkflow: (data: {
     requirement?: string;
     contentTypePreference?: 'image' | 'video' | 'auto';
+    videoDuration?: number;
     templateId?: string;
   }) => client.post('/ai/workflow/start', data),
   
   /** 执行单步操作 - 使用长超时 */
-  executeStep: (taskId: string, step: 'analyze' | 'generate' | 'copywriting' | 'preview' | 'complete') =>
-    aiClient.post('/ai/workflow/step', { taskId, step }),
+  executeStep: (
+    taskId: string,
+    step: 'analyze' | 'generate' | 'copywriting' | 'preview' | 'complete',
+    options?: { videoDuration?: number }
+  ) => aiClient.post('/ai/workflow/step', { taskId, step, ...options }),
   
   /** 获取下一步建议 */
   getNextAction: (taskId: string) => client.get(`/ai/workflow/${taskId}/next-action`),

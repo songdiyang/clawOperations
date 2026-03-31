@@ -133,7 +133,7 @@ export class AIPublishService {
           progress: 30 + Math.floor(progress.percentage * 0.35),
           currentStep: progress.message,
         }, onProgress);
-      });
+      }, config);
 
       this.updateTaskStatus(taskId, {
         progress: 65,
@@ -247,9 +247,13 @@ export class AIPublishService {
    */
   async generateContent(
     analysis: RequirementAnalysis,
-    onProgress?: ProgressCallback
+    onProgress?: ProgressCallback,
+    config?: AIPublishConfig
   ): Promise<GeneratedContent> {
-    return this.contentGenerator.generate(analysis, onProgress);
+    return this.contentGenerator.generate(analysis, {
+      onProgress,
+      videoDuration: config?.videoDuration,
+    });
   }
 
   /**

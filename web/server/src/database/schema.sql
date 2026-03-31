@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS creation_tasks (
   status VARCHAR(32) NOT NULL DEFAULT 'draft',
   requirement TEXT NULL,
   content_type VARCHAR(32) NULL,
+  video_duration INT NULL,
   analysis LONGTEXT NULL,
   content LONGTEXT NULL,
   copywriting LONGTEXT NULL,
