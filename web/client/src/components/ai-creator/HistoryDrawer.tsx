@@ -280,7 +280,7 @@ const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                 </Descriptions>
                 {selectedItem.analysis.keyPoints && (
                   <div style={{ marginTop: 8 }}>
-                    <Text type="secondary">关键卖点: </Text>
+                    <Text type="secondary">内容重点: </Text>
                     {selectedItem.analysis.keyPoints.map((point, idx) => (
                       <Tag key={idx}>{point}</Tag>
                     ))}

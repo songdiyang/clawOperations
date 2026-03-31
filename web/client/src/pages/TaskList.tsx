@@ -968,7 +968,7 @@ const TaskList: React.FC = () => {
                 </Descriptions>
                 {detailData.analysis.keyPoints && detailData.analysis.keyPoints.length > 0 && (
                   <div style={{ marginTop: 8 }}>
-                    <Text type="secondary">关键卖点: </Text>
+                    <Text type="secondary">内容重点: </Text>
                     {detailData.analysis.keyPoints.map((point, idx) => (
                       <Tag key={idx}>{point}</Tag>
                     ))}

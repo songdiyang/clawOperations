@@ -121,7 +121,7 @@ const AICreator: React.FC = () => {
   const [historyDrawerVisible, setHistoryDrawerVisible] = useState(false);
   const [templateDrawerVisible, setTemplateDrawerVisible] = useState(false);
   
-  // 营销评估状态
+  // 内容表现评估状态
   const [qualityCheckResult, setQualityCheckResult] = useState<any>(null);
   const [qualityChecking, setQualityChecking] = useState(false);
   const [marketingEvaluation, setMarketingEvaluation] = useState<any>(null);
@@ -301,7 +301,7 @@ const AICreator: React.FC = () => {
     }
   }, [task?.id, executeStep]);
 
-  // 营销潜力评估
+  // 内容表现评估
   const handleMarketingEvaluate = useCallback(async () => {
     if (!result?.copywriting) {
       message.error('请先生成文案');
@@ -597,7 +597,7 @@ const AICreator: React.FC = () => {
                   <Text>{result.analysis.targetAudience}</Text>
                 </Col>
                 <Col span={24}>
-                  <div style={{ color: '#6b7280', fontSize: 13, marginBottom: 8 }}>关键卖点</div>
+                  <div style={{ color: '#6b7280', fontSize: 13, marginBottom: 8 }}>内容重点</div>
                   <Space wrap>
                     {result.analysis.keyPoints?.map((point, index) => (
                       <Tag key={index}>{point}</Tag>

@@ -476,7 +476,7 @@ export const aiApi = {
     scheduledTime?: string;
   }) => client.post('/ai/quality-check', input),
 
-  /** 评估营销潜力 */
+    /** 评估内容表现 */
   marketingEvaluate: (input: {
     title: string;
     description: string;
@@ -491,7 +491,7 @@ export const aiApi = {
     keyPoints?: string[];
   }) => client.post('/ai/generate-hooks', input),
 
-  /** 获取营销数据分析 */
+    /** 获取内容分析数据 */
   getAnalytics: () => client.get('/ai/analytics'),
 };
 
