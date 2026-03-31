@@ -40,6 +40,7 @@ interface DraftManagerProps {
   visible: boolean;
   onClose: () => void;
   onResume: (draft: Draft) => void;
+  onDelete?: (draftId: string) => void;
 }
 
 // 步骤名称映射
@@ -76,6 +77,7 @@ const DraftManager: React.FC<DraftManagerProps> = ({
   visible,
   onClose,
   onResume,
+  onDelete,
 }) => {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(false);
@@ -108,6 +110,7 @@ const DraftManager: React.FC<DraftManagerProps> = ({
       if (response.data.success) {
         message.success('草稿已删除');
         setDrafts(drafts.filter(d => d.id !== id));
+        onDelete?.(id);
       }
     } catch (error: any) {
       message.error('删除失败: ' + (error.message || '未知错误'));

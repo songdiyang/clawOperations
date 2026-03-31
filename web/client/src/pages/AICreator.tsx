@@ -190,6 +190,15 @@ const AICreator: React.FC = () => {
     reset();
   }, [form, reset]);
 
+  const handleDraftDeleted = useCallback((draftId: string) => {
+    if (task?.id !== draftId) {
+      return;
+    }
+
+    handleReset();
+    message.info('当前草稿已删除，页面内容已刷新');
+  }, [task?.id, handleReset]);
+
   // 处理备选操作
   const handleAlternative = useCallback((alternative: string) => {
     if (alternative.includes('保存草稿')) {
@@ -352,6 +361,20 @@ const AICreator: React.FC = () => {
     navigator.clipboard.writeText(title);
     message.success('备选标题已复制到剪贴板');
   }, [result]);
+
+  const handleRegenerateVideo = useCallback(async () => {
+    if (!task?.analysis || task.analysis.contentType !== 'video') {
+      message.error('当前没有可重新生成的视频内容');
+      return;
+    }
+
+    try {
+      await executeStep('generate');
+      message.success('视频已重新生成');
+    } catch (err: any) {
+      message.error(err.message || '重新生成视频失败');
+    }
+  }, [task?.analysis, executeStep]);
 
   return (
     <div>
@@ -721,6 +744,17 @@ const AICreator: React.FC = () => {
                     <Tag color="success">已完成</Tag>
                   </Space>
                 }
+                extra={result.content.type === 'video' ? (
+                  <Button
+                    size="small"
+                    icon={<ReloadOutlined />}
+                    onClick={handleRegenerateVideo}
+                    loading={isLoading && task?.status === 'generating'}
+                    disabled={isLoading}
+                  >
+                    重新生成视频
+                  </Button>
+                ) : undefined}
                 style={{ marginBottom: 24 }}
               >
                 {result.content.type === 'image' && result.content.previewUrl ? (
@@ -1169,6 +1203,7 @@ const AICreator: React.FC = () => {
         visible={draftDrawerVisible}
         onClose={() => setDraftDrawerVisible(false)}
         onResume={handleResumeDraft}
+        onDelete={handleDraftDeleted}
       />
 
       {/* 历史记录抽屉 */}

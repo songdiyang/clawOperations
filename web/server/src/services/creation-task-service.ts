@@ -215,11 +215,13 @@ class CreationTaskService {
 
   async getHistory(options?: { limit?: number; offset?: number }): Promise<CreationTask[]> {
     const pool = getPool();
-    const limit = options?.limit || 20;
-    const offset = options?.offset || 0;
-    const [rows] = await pool.execute<RowDataPacket[]>(
-      "SELECT * FROM creation_tasks WHERE task_type='history' ORDER BY updated_at DESC LIMIT ? OFFSET ?",
-      [limit, offset]
+    const limit = Number.isFinite(options?.limit) ? Math.max(0, Number(options?.limit)) : 20;
+    const offset = Number.isFinite(options?.offset) ? Math.max(0, Number(options?.offset)) : 0;
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT * FROM creation_tasks
+        WHERE task_type='history'
+        ORDER BY updated_at DESC
+        LIMIT ${limit} OFFSET ${offset}`
     );
     return rows.map(rowToTask);
   }

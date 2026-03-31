@@ -148,6 +148,78 @@ async function runSchema(p: Pool): Promise<void> {
   }
 }
 
+async function columnExists(p: Pool, tableName: string, columnName: string): Promise<boolean> {
+  const [rows] = await p.execute<RowDataPacket[]>(
+    `SELECT 1
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND COLUMN_NAME = ?
+      LIMIT 1`,
+    [tableName, columnName]
+  );
+  return rows.length > 0;
+}
+
+async function ensureColumn(
+  p: Pool,
+  tableName: string,
+  columnName: string,
+  definition: string
+): Promise<void> {
+  if (!(await columnExists(p, tableName, columnName))) {
+    await p.execute(`ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definition}`);
+    console.log(`🩹 Added missing column ${tableName}.${columnName}`);
+  }
+}
+
+async function ensureLegacySchemaCompatibility(p: Pool): Promise<void> {
+  await ensureColumn(p, 'creation_tasks', 'task_type', "ENUM('draft','history') NOT NULL DEFAULT 'draft' AFTER `id`");
+  await ensureColumn(p, 'creation_tasks', 'content_type', 'VARCHAR(32) NULL AFTER `requirement`');
+  await ensureColumn(p, 'creation_tasks', 'publish_result', 'LONGTEXT NULL AFTER `copywriting`');
+  await ensureColumn(p, 'creation_tasks', 'completed_at', 'DATETIME NULL AFTER `reference_image_url`');
+
+  if (await columnExists(p, 'creation_tasks', 'content_type_preference')) {
+    await p.execute(
+      `UPDATE creation_tasks
+          SET content_type = content_type_preference
+        WHERE content_type IS NULL
+          AND content_type_preference IS NOT NULL`
+    );
+  }
+
+  await p.execute(
+    `UPDATE creation_tasks
+        SET task_type = CASE
+          WHEN id LIKE 'history\\_%' ESCAPE '\\' THEN 'history'
+          WHEN id LIKE 'draft\\_%' ESCAPE '\\' THEN 'draft'
+          ELSE task_type
+        END
+      WHERE id LIKE 'history\\_%' ESCAPE '\\'
+         OR id LIKE 'draft\\_%' ESCAPE '\\'`
+  );
+
+  await ensureColumn(p, 'creation_templates', 'content_type', 'VARCHAR(32) NULL AFTER `requirement`');
+  await ensureColumn(p, 'creation_templates', 'usage_count', 'INT NOT NULL DEFAULT 0 AFTER `reference_image_url`');
+
+  if (await columnExists(p, 'creation_templates', 'content_type_preference')) {
+    await p.execute(
+      `UPDATE creation_templates
+          SET content_type = content_type_preference
+        WHERE content_type IS NULL
+          AND content_type_preference IS NOT NULL`
+    );
+  }
+
+  if (await columnExists(p, 'creation_templates', 'use_count')) {
+    await p.execute(
+      `UPDATE creation_templates
+          SET usage_count = use_count
+        WHERE usage_count IS NULL OR usage_count = 0`
+    );
+  }
+}
+
 /**
  * 创建默认管理员账号
  */
@@ -202,6 +274,7 @@ export async function initDatabase(): Promise<void> {
 
   // 执行建表 SQL
   await runSchema(pool);
+  await ensureLegacySchemaCompatibility(pool);
   console.log('📋 Database schema initialized');
 
   // 创建默认管理员

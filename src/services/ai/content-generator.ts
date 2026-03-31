@@ -8,6 +8,7 @@ import { RequirementAnalysis, GeneratedContent } from '../../models/types';
 import { createLogger } from '../../utils/logger';
 
 const logger = createLogger('ContentGenerator');
+const DEFAULT_PORTRAIT_IMAGE_SIZE = '1440x2560';
 
 /**
  * 内容生成器配置
@@ -53,7 +54,7 @@ export class ContentGenerator {
 
   constructor(config?: GeneratorConfig) {
     this.doubaoClient = new DoubaoClient(config?.apiKey);
-    this.imageSize = config?.imageSize || '1024x1024';
+    this.imageSize = config?.imageSize || DEFAULT_PORTRAIT_IMAGE_SIZE;
     this.videoDuration = config?.videoDuration || 5;
     this.videoResolution = config?.videoResolution || '720p';
 

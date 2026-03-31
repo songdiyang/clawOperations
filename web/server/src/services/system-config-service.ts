@@ -94,6 +94,57 @@ const REDIS_AI_KEY = 'config:ai';
 const REDIS_DOUYIN_KEY = 'config:douyin';
 const REDIS_CONFIG_TTL = 300; // 5 分钟
 
+function hasAnyAIConfig(config: AIConfig): boolean {
+  return Boolean(
+    config.deepseek_api_key ||
+    config.deepseek_base_url ||
+    config.doubao_api_key ||
+    config.doubao_base_url ||
+    config.doubao_endpoint_id_image ||
+    config.doubao_endpoint_id_video
+  );
+}
+
+function hasAnyDouyinConfig(config: DouyinConfig): boolean {
+  return Boolean(
+    config.client_key ||
+    config.client_secret ||
+    config.redirect_uri ||
+    config.access_token ||
+    config.refresh_token ||
+    config.open_id ||
+    config.expires_at
+  );
+}
+
+function readAIConfigFromEnv(): AIConfig {
+  return {
+    deepseek_api_key: process.env.DEEPSEEK_API_KEY || null,
+    deepseek_base_url: process.env.DEEPSEEK_BASE_URL || null,
+    doubao_api_key: process.env.DOUBAO_API_KEY || null,
+    doubao_base_url: process.env.DOUBAO_BASE_URL || null,
+    doubao_endpoint_id_image: process.env.DOUBAO_ENDPOINT_ID_IMAGE || null,
+    doubao_endpoint_id_video: process.env.DOUBAO_ENDPOINT_ID_VIDEO || null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function readDouyinConfigFromEnv(): DouyinConfig {
+  const expiresAtRaw = process.env.DOUYIN_TOKEN_EXPIRES_AT;
+  const expiresAt = expiresAtRaw ? Number(expiresAtRaw) : null;
+
+  return {
+    client_key: process.env.DOUYIN_CLIENT_KEY || null,
+    client_secret: process.env.DOUYIN_CLIENT_SECRET || null,
+    redirect_uri: process.env.DOUYIN_REDIRECT_URI || null,
+    access_token: process.env.DOUYIN_ACCESS_TOKEN || null,
+    refresh_token: process.env.DOUYIN_REFRESH_TOKEN || null,
+    open_id: process.env.DOUYIN_OPEN_ID || null,
+    expires_at: Number.isFinite(expiresAt) ? expiresAt : null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
 function maskSensitiveField(value: string | null): string | null {
   if (!value) return null;
   if (value.length <= 8) return '****';
@@ -142,6 +193,26 @@ export class SystemConfigService {
   async loadConfigToEnv(): Promise<void> {
     this.aiCache = await readConfigFromDB<AIConfig>('ai_config', { ...DEFAULT_AI_CONFIG });
     this.douyinCache = await readConfigFromDB<DouyinConfig>('douyin_config', { ...DEFAULT_DOUYIN_CONFIG });
+
+    // 首次切换到 MySQL 配置时，若数据库里还没有系统配置，则从当前环境变量导入一次
+    if (!hasAnyAIConfig(this.aiCache)) {
+      const envAIConfig = readAIConfigFromEnv();
+      if (hasAnyAIConfig(envAIConfig)) {
+        await writeConfigToDB('ai_config', envAIConfig);
+        this.aiCache = envAIConfig;
+        console.log('🔄 AI config imported from environment to database');
+      }
+    }
+
+    if (!hasAnyDouyinConfig(this.douyinCache)) {
+      const envDouyinConfig = readDouyinConfigFromEnv();
+      if (hasAnyDouyinConfig(envDouyinConfig)) {
+        await writeConfigToDB('douyin_config', envDouyinConfig);
+        this.douyinCache = envDouyinConfig;
+        console.log('🔄 Douyin config imported from environment to database');
+      }
+    }
+
     this.cacheLoaded = true;
 
     // 同步到 Redis 缓存
@@ -256,22 +327,45 @@ export class SystemConfigService {
     };
     await writeConfigToDB('douyin_config', updated);
     this.douyinCache = updated;
+    this.syncDouyinConfigToEnv(updated);
+
+    try {
+      const redis = getRedis();
+      await redis.setex(REDIS_DOUYIN_KEY, REDIS_CONFIG_TTL, JSON.stringify(updated));
+    } catch { /* Redis 不可用时忽略 */ }
   }
 
   private syncAIConfigToEnv(config: AIConfig): void {
     if (config.deepseek_api_key) process.env.DEEPSEEK_API_KEY = config.deepseek_api_key;
+    else delete process.env.DEEPSEEK_API_KEY;
     if (config.deepseek_base_url) process.env.DEEPSEEK_BASE_URL = config.deepseek_base_url;
+    else delete process.env.DEEPSEEK_BASE_URL;
     if (config.doubao_api_key) process.env.DOUBAO_API_KEY = config.doubao_api_key;
+    else delete process.env.DOUBAO_API_KEY;
     if (config.doubao_base_url) process.env.DOUBAO_BASE_URL = config.doubao_base_url;
+    else delete process.env.DOUBAO_BASE_URL;
     if (config.doubao_endpoint_id_image) process.env.DOUBAO_ENDPOINT_ID_IMAGE = config.doubao_endpoint_id_image;
+    else delete process.env.DOUBAO_ENDPOINT_ID_IMAGE;
     if (config.doubao_endpoint_id_video) process.env.DOUBAO_ENDPOINT_ID_VIDEO = config.doubao_endpoint_id_video;
+    else delete process.env.DOUBAO_ENDPOINT_ID_VIDEO;
     console.log('🔄 AI config synced to environment variables');
   }
 
   private syncDouyinConfigToEnv(config: DouyinConfig): void {
     if (config.client_key) process.env.DOUYIN_CLIENT_KEY = config.client_key;
+    else delete process.env.DOUYIN_CLIENT_KEY;
     if (config.client_secret) process.env.DOUYIN_CLIENT_SECRET = config.client_secret;
+    else delete process.env.DOUYIN_CLIENT_SECRET;
     if (config.redirect_uri) process.env.DOUYIN_REDIRECT_URI = config.redirect_uri;
+    else delete process.env.DOUYIN_REDIRECT_URI;
+    if (config.access_token) process.env.DOUYIN_ACCESS_TOKEN = config.access_token;
+    else delete process.env.DOUYIN_ACCESS_TOKEN;
+    if (config.refresh_token) process.env.DOUYIN_REFRESH_TOKEN = config.refresh_token;
+    else delete process.env.DOUYIN_REFRESH_TOKEN;
+    if (config.open_id) process.env.DOUYIN_OPEN_ID = config.open_id;
+    else delete process.env.DOUYIN_OPEN_ID;
+    if (config.expires_at != null) process.env.DOUYIN_TOKEN_EXPIRES_AT = String(config.expires_at);
+    else delete process.env.DOUYIN_TOKEN_EXPIRES_AT;
     console.log('🔄 Douyin config synced to environment variables');
   }
 }

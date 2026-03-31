@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import axios, { AxiosInstance } from 'axios';
 import fs from 'fs';
-import https from 'https';
+import { spawnSync } from 'child_process';
 import { AI_CONFIG } from '../../../config/default';
 import { createLogger } from '../../utils/logger';
 import { GeneratedContent } from '../../models/types';
@@ -19,6 +19,8 @@ const projectRoot = process.cwd().toLowerCase().includes('clawoperations')
 dotenv.config({ path: path.join(projectRoot, '.env') });
 
 const logger = createLogger('DoubaoClient');
+const DEFAULT_PORTRAIT_IMAGE_SIZE = '1440x2560';
+const DEFAULT_VIDEO_RATIO = '9:16';
 
 // 防御性配置检查，确保 AI_CONFIG.DOUBAO 存在
 const DOUBAO_CONFIG = AI_CONFIG?.DOUBAO ?? {
@@ -171,7 +173,7 @@ export class DoubaoClient {
       const request: ImageGenerationRequest = {
         model: this.imageModel,
         prompt,
-        size: options?.size || '2048x2048', // 豆包要求至少 3686400 像素 (1920x1920)
+        size: options?.size || DEFAULT_PORTRAIT_IMAGE_SIZE, // 9:16 竖屏，且满足最小像素要求
         n: options?.count || 1,
         response_format: 'url',
       };
@@ -189,7 +191,7 @@ export class DoubaoClient {
       // 下载图片到本地
       const fileName = `image_${Date.now()}.png`;
       const localPath = path.join(this.outputDir, fileName);
-      await this.downloadFile(imageUrl, localPath);
+      await this.downloadFile(imageUrl, localPath, 'image');
 
       logger.info('图片生成完成', { localPath });
 
@@ -199,8 +201,8 @@ export class DoubaoClient {
         // 使用本地 URL 作为预览地址，避免豆包 URL 过期
         previewUrl: `/generated/${fileName}`,
         metadata: {
-          width: parseInt(request.size?.split('x')[0] || '2048'),
-          height: parseInt(request.size?.split('x')[1] || '2048'),
+          width: parseInt(request.size?.split('x')[0] || DEFAULT_PORTRAIT_IMAGE_SIZE.split('x')[0]),
+          height: parseInt(request.size?.split('x')[1] || DEFAULT_PORTRAIT_IMAGE_SIZE.split('x')[1]),
           size: fs.statSync(localPath).size,
         },
       };
@@ -266,7 +268,7 @@ export class DoubaoClient {
         content,
         duration: options?.duration || 5,
         resolution: options?.resolution || '720p',
-        ratio: '9:16',  // 竖屏视频，适合抖音
+        ratio: DEFAULT_VIDEO_RATIO,  // 竖屏视频，适合抖音
         watermark: false,
       };
 
@@ -288,7 +290,7 @@ export class DoubaoClient {
       // 3. 下载视频到本地
       const fileName = `video_${Date.now()}.mp4`;
       const localPath = path.join(this.outputDir, fileName);
-      await this.downloadFile(result.content.video_url, localPath);
+      await this.downloadFile(result.content.video_url, localPath, 'video');
 
       logger.info('视频生成完成', { localPath, duration: result.duration });
 
@@ -370,38 +372,119 @@ export class DoubaoClient {
    * @param url 文件URL
    * @param destPath 目标路径
    */
-  private downloadFile(url: string, destPath: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const file = fs.createWriteStream(destPath);
-      const protocol = url.startsWith('https') ? https : require('http');
-
-      protocol
-        .get(url, (response: any) => {
-          if (response.statusCode === 301 || response.statusCode === 302) {
-            // 处理重定向
-            this.downloadFile(response.headers.location, destPath)
-              .then(resolve)
-              .catch(reject);
-            return;
-          }
-
-          if (response.statusCode !== 200) {
-            reject(new Error(`下载失败，状态码: ${response.statusCode}`));
-            return;
-          }
-
-          response.pipe(file);
-
-          file.on('finish', () => {
-            file.close();
-            resolve();
-          });
-        })
-        .on('error', (err: Error) => {
-          fs.unlink(destPath, () => {});
-          reject(err);
-        });
+  private async downloadFile(
+    url: string,
+    destPath: string,
+    expectedType: 'image' | 'video'
+  ): Promise<void> {
+    const response = await axios.get(url, {
+      responseType: 'stream',
+      timeout: 120000,
+      maxRedirects: 5,
+      validateStatus: (status) => status >= 200 && status < 300,
     });
+
+    const contentTypeHeader = String(response.headers['content-type'] || '').toLowerCase();
+    if (expectedType === 'video' && contentTypeHeader && !contentTypeHeader.startsWith('video/')) {
+      throw new Error(`下载的视频文件类型异常: ${contentTypeHeader}`);
+    }
+    if (expectedType === 'image' && contentTypeHeader && !contentTypeHeader.startsWith('image/')) {
+      throw new Error(`下载的图片文件类型异常: ${contentTypeHeader}`);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const file = fs.createWriteStream(destPath);
+
+      response.data.pipe(file);
+
+      file.on('finish', () => {
+        file.close((closeError) => {
+          if (closeError) {
+            reject(closeError);
+            return;
+          }
+          resolve();
+        });
+      });
+
+      file.on('error', (err: Error) => {
+        fs.unlink(destPath, () => {});
+        reject(err);
+      });
+
+      response.data.on('error', (err: Error) => {
+        fs.unlink(destPath, () => {});
+        reject(err);
+      });
+    });
+
+    this.validateDownloadedFile(destPath, expectedType);
+  }
+
+  private validateDownloadedFile(destPath: string, expectedType: 'image' | 'video'): void {
+    const stats = fs.statSync(destPath);
+    if (stats.size <= 0) {
+      throw new Error(`${expectedType === 'video' ? '视频' : '图片'}下载失败：文件为空`);
+    }
+
+    if (expectedType === 'video') {
+      this.validateVideoFile(destPath, stats.size);
+    }
+  }
+
+  private validateVideoFile(destPath: string, fileSize: number): void {
+    const fd = fs.openSync(destPath, 'r');
+    try {
+      const header = Buffer.alloc(12);
+      const bytesRead = fs.readSync(fd, header, 0, header.length, 0);
+      const fileTypeMarker = bytesRead >= 8 ? header.toString('ascii', 4, 8) : '';
+      if (fileTypeMarker !== 'ftyp') {
+        throw new Error('下载的视频文件不是有效的 MP4 内容');
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+
+    // 极小的 mp4 往往是错误页、占位文件或只有容器壳而无真实媒体内容
+    if (fileSize < 64 * 1024) {
+      throw new Error(`下载的视频文件过小（${fileSize} bytes），疑似无效视频内容`);
+    }
+
+    const probeResult = spawnSync('ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'format=duration:stream=codec_type',
+      '-of', 'json',
+      destPath,
+    ], {
+      encoding: 'utf-8',
+      timeout: 10000,
+    });
+
+    if (probeResult.status === 0 && probeResult.stdout) {
+      try {
+        const data = JSON.parse(probeResult.stdout) as {
+          format?: { duration?: string };
+          streams?: Array<{ codec_type?: string }>;
+        };
+        const duration = Number(data.format?.duration || '0');
+        const hasVideoStream = Boolean(data.streams?.some((stream) => stream.codec_type === 'video'));
+        if (!hasVideoStream || !Number.isFinite(duration) || duration <= 0) {
+          throw new Error('ffprobe 检测到视频时长或视频流异常');
+        }
+        return;
+      } catch (error: any) {
+        throw new Error(`下载的视频文件校验失败: ${error.message}`);
+      }
+    }
+
+    // 服务器未安装 ffprobe 时，回退到更宽松但仍可拦截明显坏文件的 MP4 结构检查
+    const sample = fs.readFileSync(destPath);
+    const hasMoov = sample.includes(Buffer.from('moov'));
+    const hasMdat = sample.includes(Buffer.from('mdat'));
+    if (!hasMoov || !hasMdat) {
+      throw new Error('下载的视频文件缺少有效 MP4 关键数据块');
+    }
   }
 
   /**

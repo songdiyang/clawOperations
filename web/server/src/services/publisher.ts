@@ -12,6 +12,12 @@ let currentConfig: DouyinConfig | null = null;
  * @returns 是否成功加载配置
  */
 export function initPublisherFromEnv(): boolean {
+  const storedConfig = appConfigService.getDouyinConfig();
+  if (storedConfig) {
+    setPublisher(storedConfig);
+    return true;
+  }
+
   const clientKey = process.env.DOUYIN_CLIENT_KEY;
   const clientSecret = process.env.DOUYIN_CLIENT_SECRET;
   const redirectUri = process.env.DOUYIN_REDIRECT_URI;
@@ -33,12 +39,6 @@ export function initPublisherFromEnv(): boolean {
       expiresAt: Number.isFinite(expiresAt) ? expiresAt : undefined,
     };
     setPublisher(config);
-    return true;
-  }
-
-  const storedConfig = appConfigService.getDouyinConfig();
-  if (storedConfig) {
-    setPublisher(storedConfig);
     return true;
   }
 

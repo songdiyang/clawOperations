@@ -14,6 +14,7 @@ import { ContentQualityChecker } from '../../../../src/services/ai/content-quali
 import { AIPublishConfig, AITaskStatus, CreationTask, QualityCheckInput, MarketingEvaluation } from '../../../../src/models/types';
 import { appConfigService } from '../services/app-config-service';
 import { creationTaskService } from '../services/creation-task-service';
+import { systemConfigService } from '../services/system-config-service';
 
 const router = Router();
 
@@ -50,25 +51,37 @@ let aiPublishService: AIPublishService | null = null;
 let requirementAnalyzer: RequirementAnalyzer | null = null;
 let contentGenerator: ContentGenerator | null = null;
 let copywritingGenerator: CopywritingGenerator | null = null;
-let cachedDeepseekApiKey: string | null = null;
+let cachedAIConfigSignature: string | null = null;
 
 function resetAIServices() {
   aiPublishService = null;
   requirementAnalyzer = null;
   contentGenerator = null;
   copywritingGenerator = null;
-  cachedDeepseekApiKey = null;
+  cachedAIConfigSignature = null;
 }
 
 function getCurrentDeepseekApiKey(): string | undefined {
-  return appConfigService.getAIConfig().deepseekApiKey || process.env.DEEPSEEK_API_KEY || undefined;
+  return appConfigService.getAIConfig().deepseekApiKey || undefined;
+}
+
+function getAIConfigSignature(): string {
+  const config = systemConfigService.getAIConfig();
+  return JSON.stringify({
+    deepseek_api_key: config.deepseek_api_key || null,
+    deepseek_base_url: config.deepseek_base_url || null,
+    doubao_api_key: config.doubao_api_key || null,
+    doubao_base_url: config.doubao_base_url || null,
+    doubao_endpoint_id_image: config.doubao_endpoint_id_image || null,
+    doubao_endpoint_id_video: config.doubao_endpoint_id_video || null,
+  });
 }
 
 function ensureAIServiceCache(): void {
-  const currentKey = getCurrentDeepseekApiKey() || null;
-  if (currentKey !== cachedDeepseekApiKey) {
+  const currentSignature = getAIConfigSignature();
+  if (currentSignature !== cachedAIConfigSignature) {
     resetAIServices();
-    cachedDeepseekApiKey = currentKey;
+    cachedAIConfigSignature = currentSignature;
   }
 }
 
@@ -102,8 +115,12 @@ function getRequirementAnalyzer(): RequirementAnalyzer {
  * 获取或初始化内容生成服务
  */
 function getContentGenerator(): ContentGenerator {
+  ensureAIServiceCache();
   if (!contentGenerator) {
-    contentGenerator = new ContentGenerator();
+    const aiConfig = systemConfigService.getAIConfig();
+    contentGenerator = new ContentGenerator({
+      apiKey: aiConfig.doubao_api_key || undefined,
+    });
   }
   return contentGenerator;
 }

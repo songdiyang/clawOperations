@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Typography, message, Spin, Divider, Row, Col } from 'antd';
+import { Button, Typography, message, Spin, Divider, Row, Col, Form, Input, Checkbox } from 'antd';
 import { 
   TikTokOutlined, 
   ExperimentOutlined,
@@ -8,10 +8,13 @@ import {
   ClockCircleOutlined,
   ThunderboltOutlined,
   SafetyOutlined,
+  UserOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import { authApi, setStoredToken, setStoredUser } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text, Paragraph, Link } = Typography;
 
 interface LoginProps {
   onDevModeEnter: () => void;
@@ -42,8 +45,11 @@ const features = [
 ];
 
 const Login: React.FC<LoginProps> = ({ onDevModeEnter }) => {
+  const { login } = useAuth();
+  const [adminForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [loginMode, setLoginMode] = useState<'douyin' | 'admin'>('douyin');
 
   // 检查 URL 中是否有授权回调的 code
   useEffect(() => {
@@ -101,6 +107,23 @@ const Login: React.FC<LoginProps> = ({ onDevModeEnter }) => {
     } catch (error: any) {
       console.error('Get auth URL error:', error);
       message.error(error.message || '获取授权地址失败，请稍后重试');
+      setLoading(false);
+    }
+  };
+
+  // 点击管理员登录
+  const handleAdminLogin = async (values: {
+    account: string;
+    password: string;
+    remember?: boolean;
+  }) => {
+    setLoading(true);
+    try {
+      await login(values.account, values.password, values.remember);
+      message.success('管理员登录成功！');
+    } catch (error: any) {
+      message.error(error.response?.data?.error || error.message || '管理员登录失败，请重试');
+    } finally {
       setLoading(false);
     }
   };
@@ -236,82 +259,209 @@ const Login: React.FC<LoginProps> = ({ onDevModeEnter }) => {
               欢迎回来
             </Title>
             <Text type="secondary" style={{ fontSize: 15 }}>
-              使用抖音账号登录，开始创作之旅
+              {loginMode === 'douyin' ? '使用抖音账号登录，开始创作之旅' : '使用管理员账号登录，进入系统管理'}
             </Text>
           </div>
 
-          {/* 登录按钮 */}
-          <Button
-            type="primary"
-            size="large"
-            block
-            loading={loading}
-            onClick={handleDouyinLogin}
-            style={{
-              height: 52,
-              fontSize: 16,
-              fontWeight: 500,
-              borderRadius: 10,
-              background: '#000',
-              borderColor: '#000',
-            }}
-            icon={<TikTokOutlined />}
-          >
-            {loading ? '正在跳转...' : '使用抖音账号登录'}
-          </Button>
-
-          {/* 安全提示 */}
           <div
             style={{
-              marginTop: 24,
-              padding: '16px',
-              background: '#f5f7fa',
-              borderRadius: 8,
               display: 'flex',
-              alignItems: 'flex-start',
-              gap: 12,
+              gap: 8,
+              padding: 4,
+              borderRadius: 12,
+              background: '#f5f7fa',
+              marginBottom: 20,
             }}
           >
-            <SafetyOutlined style={{ color: '#52c41a', fontSize: 18, marginTop: 2 }} />
-            <div>
-              <div style={{ fontWeight: 500, color: '#1f2937', marginBottom: 4 }}>
-                安全登录
-              </div>
-              <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>
-                我们使用抖音官方授权，不会获取您的密码。
-                登录后可管理您的视频发布权限。
-              </div>
-            </div>
+            <Button
+              type={loginMode === 'douyin' ? 'primary' : 'text'}
+              block
+              onClick={() => setLoginMode('douyin')}
+              style={{
+                height: 40,
+                borderRadius: 10,
+                background: loginMode === 'douyin' ? '#000' : 'transparent',
+                borderColor: loginMode === 'douyin' ? '#000' : 'transparent',
+                color: loginMode === 'douyin' ? '#fff' : '#6b7280',
+                boxShadow: 'none',
+              }}
+              icon={<TikTokOutlined />}
+            >
+              抖音登录
+            </Button>
+            <Button
+              type={loginMode === 'admin' ? 'primary' : 'text'}
+              block
+              onClick={() => setLoginMode('admin')}
+              style={{
+                height: 40,
+                borderRadius: 10,
+                background: loginMode === 'admin' ? '#1677ff' : 'transparent',
+                borderColor: loginMode === 'admin' ? '#1677ff' : 'transparent',
+                color: loginMode === 'admin' ? '#fff' : '#6b7280',
+                boxShadow: 'none',
+              }}
+              icon={<UserOutlined />}
+            >
+              管理员登录
+            </Button>
           </div>
 
-          {/* 分隔线 */}
-          <Divider style={{ margin: '32px 0' }}>
-            <Text type="secondary" style={{ fontSize: 13 }}>开发调试</Text>
-          </Divider>
+          {loginMode === 'douyin' ? (
+            <>
+              <Button
+                type="primary"
+                size="large"
+                block
+                loading={loading}
+                onClick={handleDouyinLogin}
+                style={{
+                  height: 52,
+                  fontSize: 16,
+                  fontWeight: 500,
+                  borderRadius: 10,
+                  background: '#000',
+                  borderColor: '#000',
+                }}
+                icon={<TikTokOutlined />}
+              >
+                {loading ? '正在跳转...' : '使用抖音账号登录'}
+              </Button>
 
-          {/* 开发模式入口 */}
-          <Button
-            type="default"
-            size="large"
-            block
-            onClick={onDevModeEnter}
-            style={{
-              height: 48,
-              borderRadius: 10,
-              color: '#6b7280',
-              borderColor: '#e5e7eb',
-            }}
-            icon={<ExperimentOutlined />}
-          >
-            跳过登录（开发模式）
-          </Button>
+              <div
+                style={{
+                  marginTop: 24,
+                  padding: '16px',
+                  background: '#f5f7fa',
+                  borderRadius: 8,
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                }}
+              >
+                <SafetyOutlined style={{ color: '#52c41a', fontSize: 18, marginTop: 2 }} />
+                <div>
+                  <div style={{ fontWeight: 500, color: '#1f2937', marginBottom: 4 }}>
+                    安全登录
+                  </div>
+                  <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>
+                    我们使用抖音官方授权，不会获取您的密码。
+                    登录后可管理您的视频发布权限。
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <Form
+                form={adminForm}
+                layout="vertical"
+                onFinish={handleAdminLogin}
+                autoComplete="off"
+              >
+                <Form.Item
+                  name="account"
+                  rules={[{ required: true, message: '请输入管理员账号' }]}
+                  style={{ marginBottom: 16 }}
+                >
+                  <Input
+                    size="large"
+                    prefix={<UserOutlined />}
+                    placeholder="用户名或邮箱"
+                    allowClear
+                    style={{ height: 48, borderRadius: 10 }}
+                  />
+                </Form.Item>
 
-          <Text
-            type="secondary"
-            style={{ display: 'block', textAlign: 'center', marginTop: 12, fontSize: 12 }}
-          >
-            开发模式仅供调试，部分功能受限
-          </Text>
+                <Form.Item
+                  name="password"
+                  rules={[{ required: true, message: '请输入密码' }]}
+                  style={{ marginBottom: 12 }}
+                >
+                  <Input.Password
+                    size="large"
+                    prefix={<LockOutlined />}
+                    placeholder="管理员密码"
+                    style={{ height: 48, borderRadius: 10 }}
+                  />
+                </Form.Item>
+
+                <Form.Item name="remember" valuePropName="checked" style={{ marginBottom: 20 }}>
+                  <Checkbox>保持登录状态</Checkbox>
+                </Form.Item>
+
+                <Form.Item style={{ marginBottom: 0 }}>
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    size="large"
+                    block
+                    loading={loading}
+                    style={{
+                      height: 52,
+                      fontSize: 16,
+                      fontWeight: 500,
+                      borderRadius: 10,
+                    }}
+                    icon={<UserOutlined />}
+                  >
+                    {loading ? '正在登录...' : '进入管理员后台'}
+                  </Button>
+                </Form.Item>
+              </Form>
+
+              <div style={{ marginTop: 16, textAlign: 'center' }}>
+                <Text type="secondary" style={{ fontSize: 13 }}>
+                  管理员可使用平台账号登录，进入系统配置与后台管理。
+                </Text>
+              </div>
+            </>
+          )}
+
+          <div style={{ marginTop: 16, textAlign: 'center' }}>
+            {loginMode === 'douyin' ? (
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                需要后台管理入口？ <Link onClick={() => setLoginMode('admin')}>切换到管理员登录</Link>
+              </Text>
+            ) : (
+              <Text type="secondary" style={{ fontSize: 13 }}>
+                需要抖音授权发布？ <Link onClick={() => setLoginMode('douyin')}>切换到抖音登录</Link>
+              </Text>
+            )}
+          </div>
+
+          {/* 分隔线 + 开发模式入口（仅开发环境显示） */}
+          {import.meta.env.DEV && (
+            <>
+              <Divider style={{ margin: '32px 0' }}>
+                <Text type="secondary" style={{ fontSize: 13 }}>开发调试</Text>
+              </Divider>
+
+              {/* 开发模式入口 */}
+              <Button
+                type="default"
+                size="large"
+                block
+                onClick={onDevModeEnter}
+                style={{
+                  height: 48,
+                  borderRadius: 10,
+                  color: '#6b7280',
+                  borderColor: '#e5e7eb',
+                }}
+                icon={<ExperimentOutlined />}
+              >
+                跳过登录（开发模式）
+              </Button>
+
+              <Text
+                type="secondary"
+                style={{ display: 'block', textAlign: 'center', marginTop: 12, fontSize: 12 }}
+              >
+                开发模式仅供调试，部分功能受限
+              </Text>
+            </>
+          )}
         </div>
 
         {/* 底部版权 */}
