@@ -3,13 +3,20 @@
  * 用于图片和视频生成
  */
 
+import dotenv from 'dotenv';
+import path from 'path';
 import axios, { AxiosInstance } from 'axios';
 import fs from 'fs';
-import path from 'path';
 import https from 'https';
 import { AI_CONFIG } from '../../../config/default';
 import { createLogger } from '../../utils/logger';
 import { GeneratedContent } from '../../models/types';
+
+// 确保环境变量已加载（奴理模块导入顺序问题）
+const projectRoot = process.cwd().toLowerCase().includes('clawoperations')
+  ? process.cwd().replace(/[\/]web[\/]server.*$/, '').replace(/[\/]dist.*$/, '')
+  : process.cwd();
+dotenv.config({ path: path.join(projectRoot, '.env') });
 
 const logger = createLogger('DoubaoClient');
 
@@ -100,13 +107,16 @@ export class DoubaoClient {
   private outputDir: string;
 
   constructor(apiKey?: string) {
+    // 每次创建实例时重新读取环境变量（支持运行时配置更新）
     const key = apiKey || process.env.DOUBAO_API_KEY;
     if (!key) {
       throw new Error('豆包 API Key 未配置。请设置 DOUBAO_API_KEY 环境变量（火山引擎方舟 API Key）。');
     }
 
+    const baseUrl = process.env.DOUBAO_BASE_URL || DOUBAO_CONFIG.BASE_URL;
+    
     this.client = axios.create({
-      baseURL: DOUBAO_CONFIG.BASE_URL,
+      baseURL: baseUrl,
       headers: {
         'Authorization': `Bearer ${key}`,
         'Content-Type': 'application/json',
@@ -114,8 +124,9 @@ export class DoubaoClient {
       timeout: 120000, // 2 分钟超时
     });
 
-    this.imageModel = DOUBAO_CONFIG.IMAGE_MODEL;
-    this.videoModel = DOUBAO_CONFIG.VIDEO_MODEL;
+    // 优先从环境变量读取，支持运行时配置更新
+    this.imageModel = process.env.DOUBAO_ENDPOINT_ID_IMAGE || DOUBAO_CONFIG.IMAGE_MODEL;
+    this.videoModel = process.env.DOUBAO_ENDPOINT_ID_VIDEO || DOUBAO_CONFIG.VIDEO_MODEL;
     this.pollInterval = DOUBAO_CONFIG.POLL_INTERVAL;
     this.taskTimeout = DOUBAO_CONFIG.TASK_TIMEOUT;
 

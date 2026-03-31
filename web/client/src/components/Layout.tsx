@@ -13,6 +13,7 @@ import {
   HomeOutlined,
   BellOutlined,
   QuestionCircleOutlined,
+  ControlOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -34,13 +35,16 @@ const pageTitles: Record<string, string> = {
   publish: '视频发布',
   tasks: '任务管理',
   profile: '个人中心',
+  system: '系统配置',
 };
 
 const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick, isDevMode, onExitDevMode }) => {
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
 
-  // 菜单项：开发模式下显示认证配置
+  // 菜单项：开发模式下显示认证配置，管理员显示系统配置
+  const isAdmin = user?.role === 'admin';
+  
   const menuItems = [
     {
       key: 'ai',
@@ -63,6 +67,12 @@ const AppLayout: React.FC<LayoutProps> = ({ children, currentPage, onMenuClick, 
       icon: <UnorderedListOutlined />,
       label: '任务管理',
     },
+    // 管理员显示系统配置
+    ...(isAdmin ? [{
+      key: 'system',
+      icon: <ControlOutlined />,
+      label: '系统配置',
+    }] : []),
   ];
 
   const userMenuItems = isDevMode ? [

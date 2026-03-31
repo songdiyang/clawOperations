@@ -21,6 +21,7 @@ import {
   Segmented,
   Image,
   Descriptions,
+  Statistic,
 } from 'antd';
 import {
   ReloadOutlined,
@@ -39,6 +40,10 @@ import {
   VideoCameraOutlined,
   PictureOutlined,
   EyeOutlined,
+  RiseOutlined,
+  FireOutlined,
+  TagsOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 import { publishApi, aiApi } from '../api/client';
 
@@ -148,6 +153,10 @@ const TaskList: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<'all' | 'publish' | 'ai'>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   
+  // 营销数据分析状态
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  
   // 详情弹窗状态
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailData, setDetailData] = useState<{
@@ -232,6 +241,21 @@ const TaskList: React.FC = () => {
     }
   }, [initialLoaded]);
 
+  // 获取营销数据分析
+  const fetchAnalytics = useCallback(async () => {
+    setAnalyticsLoading(true);
+    try {
+      const res = await aiApi.getAnalytics();
+      if (res.data.success) {
+        setAnalytics(res.data.data);
+      }
+    } catch (error) {
+      // 静默失败，不影响任务列表
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, []);
+
   // 检查是否有进行中的 AI 任务
   const hasActiveAITasks = aiTasks.some(t => 
     ['pending', 'analyzing', 'generating', 'copywriting', 'publishing'].includes(t.status)
@@ -240,6 +264,7 @@ const TaskList: React.FC = () => {
   useEffect(() => {
     // 初次加载
     fetchTasks(true);
+    fetchAnalytics();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -694,6 +719,129 @@ const TaskList: React.FC = () => {
           />
         </Col>
       </Row>
+
+      {/* 营销数据分析面板 */}
+      {analytics && (
+        <Card
+          title={
+            <Space>
+              <BarChartOutlined style={{ color: '#1677ff' }} />
+              <span>创作数据分析</span>
+            </Space>
+          }
+          extra={
+            <Button
+              size="small"
+              icon={<ReloadOutlined spin={analyticsLoading} />}
+              onClick={fetchAnalytics}
+              loading={analyticsLoading}
+            >
+              刷新
+            </Button>
+          }
+          style={{ marginBottom: 24 }}
+        >
+          <Row gutter={[16, 16]}>
+            {/* 成功率 */}
+            <Col xs={12} sm={6}>
+              <Statistic
+                title="创作成功率"
+                value={analytics.successRate}
+                suffix="%"
+                valueStyle={{ color: analytics.successRate >= 80 ? '#52c41a' : '#fa8c16', fontSize: 24 }}
+                prefix={<RiseOutlined />}
+              />
+            </Col>
+
+            {/* 图文/视频占比 */}
+            <Col xs={12} sm={6}>
+              <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>内容类型分布</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <VideoCameraOutlined style={{ color: '#1677ff' }} />
+                  <span style={{ fontWeight: 600, color: '#1677ff' }}>{analytics.contentTypeBreakdown.video}</span>
+                  <span style={{ fontSize: 12, color: '#6b7280' }}>视频</span>
+                </div>
+                <span style={{ color: '#d9d9d9' }}>|</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <PictureOutlined style={{ color: '#52c41a' }} />
+                  <span style={{ fontWeight: 600, color: '#52c41a' }}>{analytics.contentTypeBreakdown.image}</span>
+                  <span style={{ fontSize: 12, color: '#6b7280' }}>图片</span>
+                </div>
+              </div>
+            </Col>
+
+            {/* 平均营销评分 */}
+            <Col xs={12} sm={6}>
+              {analytics.averageMarketingScore != null ? (
+                <Statistic
+                  title="平均营销评分"
+                  value={analytics.averageMarketingScore}
+                  suffix="/ 100"
+                  valueStyle={{
+                    color: analytics.averageMarketingScore >= 70 ? '#52c41a' : '#fa8c16',
+                    fontSize: 24,
+                  }}
+                  prefix={<RiseOutlined />}
+                />
+              ) : (
+                <div>
+                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>平均营销评分</div>
+                  <span style={{ color: '#9ca3af', fontSize: 13 }}>暂无评分数据</span>
+                </div>
+              )}
+            </Col>
+
+            {/* 近7天趋势数据 */}
+            <Col xs={12} sm={6}>
+              <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>近7天创作量</div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', height: 40 }}>
+                {analytics.recentTrend?.map((item: any, i: number) => {
+                  const maxCount = Math.max(...analytics.recentTrend.map((d: any) => d.count), 1);
+                  const height = Math.max((item.count / maxCount) * 36, item.count > 0 ? 6 : 0);
+                  const isToday = i === 6;
+                  return (
+                    <Tooltip key={i} title={`${item.date}: ${item.count}条`}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                        <div style={{
+                          width: 10,
+                          height: Math.max(height, 2),
+                          background: isToday ? '#1677ff' : '#91caff',
+                          borderRadius: 3,
+                          transition: 'height 0.3s',
+                        }} />
+                        <span style={{ fontSize: 10, color: '#9ca3af' }}>{item.date.split(' ')[1] || item.date}</span>
+                      </div>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            </Col>
+
+            {/* 热门话题 */}
+            {analytics.topHashtags?.length > 0 && (
+              <Col span={24}>
+                <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 8 }}>
+                  <FireOutlined style={{ marginRight: 4, color: '#f5222d' }} />
+                  热门话题 TOP10
+                </div>
+                <Space wrap size={6}>
+                  {analytics.topHashtags.map((item: any, i: number) => (
+                    <Tag
+                      key={i}
+                      color={i < 3 ? 'red' : i < 6 ? 'orange' : 'blue'}
+                      style={{ fontSize: 12 }}
+                    >
+                      #{item.tag}
+                      <span style={{ opacity: 0.8, marginLeft: 4 }}>x{item.count}</span>
+                    </Tag>
+                  ))}
+                </Space>
+              </Col>
+            )}
+          </Row>
+        </Card>
+      )}
 
       {/* 任务列表 */}
       <Card

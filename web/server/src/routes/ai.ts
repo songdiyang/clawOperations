@@ -11,7 +11,7 @@ import { RequirementAnalyzer } from '../../../../src/services/ai/requirement-ana
 import { ContentGenerator } from '../../../../src/services/ai/content-generator';
 import { CopywritingGenerator } from '../../../../src/services/ai/copywriting-generator';
 import { ContentQualityChecker } from '../../../../src/services/ai/content-quality-checker';
-import { AIPublishConfig, AITaskStatus, CreationTask, QualityCheckInput } from '../../../../src/models/types';
+import { AIPublishConfig, AITaskStatus, CreationTask, QualityCheckInput, MarketingEvaluation } from '../../../../src/models/types';
 import { appConfigService } from '../services/app-config-service';
 import { creationTaskService } from '../services/creation-task-service';
 
@@ -1164,6 +1164,155 @@ router.get('/workflow/:id/next-action', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: error.message || '获取下一步建议失败',
+    });
+  }
+});
+
+/**
+ * POST /api/ai/marketing-evaluate - 评估营销潜力
+ */
+router.post('/marketing-evaluate', async (req: Request, res: Response) => {
+  try {
+    const { title, description, hashtags, contentType } = req.body;
+
+    if (!title || !description) {
+      return res.status(400).json({
+        success: false,
+        error: '请提供标题和描述',
+      });
+    }
+
+    const analyzer = getRequirementAnalyzer();
+    // 使用 DeepSeekClient 直接调用评估方法
+    const deepseekKey = getCurrentDeepseekApiKey();
+    const { DeepSeekClient } = await import('../../../../src/api/ai/deepseek-client');
+    const dsClient = new DeepSeekClient(deepseekKey);
+    const evaluation = await dsClient.evaluateMarketingPotential(
+      title,
+      description,
+      hashtags || [],
+      contentType
+    );
+
+    res.json({
+      success: true,
+      data: evaluation,
+    });
+  } catch (error: any) {
+    console.error('营销潜力评估失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || '营销潜力评估失败',
+    });
+  }
+});
+
+/**
+ * POST /api/ai/generate-hooks - 生成内容开场钩子
+ */
+router.post('/generate-hooks', async (req: Request, res: Response) => {
+  try {
+    const { theme, targetAudience, keyPoints } = req.body;
+
+    if (!theme) {
+      return res.status(400).json({
+        success: false,
+        error: '请提供内容主题',
+      });
+    }
+
+    const deepseekKey = getCurrentDeepseekApiKey();
+    const { DeepSeekClient } = await import('../../../../src/api/ai/deepseek-client');
+    const dsClient = new DeepSeekClient(deepseekKey);
+    const hooks = await dsClient.generateContentHooks(
+      theme,
+      targetAudience || '通用受众',
+      keyPoints || []
+    );
+
+    res.json({
+      success: true,
+      data: { hooks },
+    });
+  } catch (error: any) {
+    console.error('内容钩子生成失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || '内容钩子生成失败',
+    });
+  }
+});
+
+/**
+ * GET /api/ai/analytics - 获取营销数据分析
+ */
+router.get('/analytics', async (req: Request, res: Response) => {
+  try {
+    const allTasks = creationTaskService.getHistory({ limit: 1000 }) || [];
+
+    const totalTasks = allTasks.length;
+    const completedTasks = allTasks.filter((t: any) => t.status === 'completed').length;
+    const failedTasks = allTasks.filter((t: any) => t.status === 'failed').length;
+
+    // 内容类型分布
+    const contentTypeBreakdown = { image: 0, video: 0 };
+    allTasks.forEach((t: any) => {
+      const type = t.content?.type || t.analysis?.contentType;
+      if (type === 'image') contentTypeBreakdown.image++;
+      else if (type === 'video') contentTypeBreakdown.video++;
+    });
+
+    // 平均营销评分
+    const scoredTasks = allTasks.filter((t: any) => t.copywriting?.marketingScore != null);
+    const averageMarketingScore = scoredTasks.length > 0
+      ? Math.round(scoredTasks.reduce((sum: number, t: any) => sum + t.copywriting.marketingScore, 0) / scoredTasks.length)
+      : null;
+
+    // 最常用话题
+    const hashtagMap: Record<string, number> = {};
+    allTasks.forEach((t: any) => {
+      (t.copywriting?.hashtags || []).forEach((tag: string) => {
+        hashtagMap[tag] = (hashtagMap[tag] || 0) + 1;
+      });
+    });
+    const topHashtags = Object.entries(hashtagMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([tag, count]) => ({ tag, count }));
+
+    // 近7天创作趋势
+    const now = Date.now();
+    const recentTrend = Array.from({ length: 7 }, (_, i) => {
+      const dayStart = now - (6 - i) * 24 * 60 * 60 * 1000;
+      const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+      const count = allTasks.filter((t: any) => {
+        const createdAt = new Date(t.createdAt).getTime();
+        return createdAt >= dayStart && createdAt < dayEnd;
+      }).length;
+      return {
+        date: new Date(dayStart).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }),
+        count,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalTasks,
+        completedTasks,
+        failedTasks,
+        successRate: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
+        contentTypeBreakdown,
+        averageMarketingScore,
+        topHashtags,
+        recentTrend,
+      },
+    });
+  } catch (error: any) {
+    console.error('获取营销分析失败:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || '获取营销分析失败',
     });
   }
 });

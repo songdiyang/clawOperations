@@ -223,6 +223,18 @@ export interface RequirementAnalysis {
   videoPrompt?: string;
   /** 原始用户输入 */
   originalInput: string;
+
+  // ==================== 营销增强字段 ====================
+  /** 营销切入角度：痛点式/渴望式/好奇式/社交证明式 */
+  marketingAngle?: string;
+  /** 情感触发词建议（3-5个，如"限时""独家""口感炸裂"） */
+  emotionalTriggers?: string[];
+  /** 内容开场钩子建议（前3秒吸引点，2-3个） */
+  contentHooks?: string[];
+  /** 目标受众痛点 */
+  audiencePainPoints?: string[];
+  /** 平台优化建议（发布时间/互动引导等） */
+  platformTips?: string[];
 }
 
 /**
@@ -258,6 +270,43 @@ export interface GeneratedCopywriting {
   hashtags: string[];
   /** 建议的位置名称 */
   suggestedPoiName?: string;
+
+  // ==================== 营销增强字段 ====================
+  /** 行动号召语（个性化 CTA，如"立即预约""点击领券"） */
+  callToAction?: string;
+  /** 营销潜力评分（0-100，AI 自评） */
+  marketingScore?: number;
+  /** 2-3 个备选标题 */
+  alternativeTitles?: string[];
+  /** 改进建议（2-3条具体建议） */
+  improvementSuggestions?: string[];
+}
+
+/**
+ * 营销效果评估结果
+ */
+export interface MarketingEvaluation {
+  /** 综合营销评分（0-100） */
+  score: number;
+  /** 各维度评分 */
+  dimensions: {
+    /** 标题吸引力（0-100） */
+    titleAttractiveness: number;
+    /** 情感共鸣（0-100） */
+    emotionalResonance: number;
+    /** 行动引导力（0-100） */
+    callToActionStrength: number;
+    /** 话题质量（0-100） */
+    hashtagQuality: number;
+  };
+  /** 具体改进建议 */
+  suggestions: string[];
+  /** 建议发布时间段 */
+  bestPublishTime: string;
+  /** 预测互动等级：high/medium/low */
+  predictedEngagement: 'high' | 'medium' | 'low';
+  /** 内容开场钩子建议 */
+  contentHooks?: string[];
 }
 
 /**

@@ -468,6 +468,24 @@ export const aiApi = {
     brandName?: string;
     scheduledTime?: string;
   }) => client.post('/ai/quality-check', input),
+
+  /** 评估营销潜力 */
+  marketingEvaluate: (input: {
+    title: string;
+    description: string;
+    hashtags?: string[];
+    contentType?: 'image' | 'video';
+  }) => client.post('/ai/marketing-evaluate', input),
+
+  /** 生成内容开场钩子 */
+  generateHooks: (input: {
+    theme: string;
+    targetAudience?: string;
+    keyPoints?: string[];
+  }) => client.post('/ai/generate-hooks', input),
+
+  /** 获取营销数据分析 */
+  getAnalytics: () => client.get('/ai/analytics'),
 };
 
 export default client;

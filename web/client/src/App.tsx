@@ -9,6 +9,7 @@ import TaskList from './pages/TaskList';
 import AICreator from './pages/AICreator';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
+import SystemConfig from './pages/SystemConfig';
 import './App.css';
 
 // 简约紧致风格主题配置
@@ -118,7 +119,7 @@ const compactTheme = {
   },
 };
 
-type PageType = 'ai' | 'auth' | 'publish' | 'tasks' | 'profile';
+type PageType = 'ai' | 'auth' | 'publish' | 'tasks' | 'profile' | 'system';
 
 // 开发模式状态键
 const DEV_MODE_KEY = 'clawops_dev_mode';
@@ -176,6 +177,8 @@ function AppContent() {
         return <TaskList />;
       case 'profile':
         return <Profile />;
+      case 'system':
+        return <SystemConfig />;
       default:
         return <AICreator />;
     }

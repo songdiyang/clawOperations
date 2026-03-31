@@ -21,6 +21,9 @@ import {
   Image,
   Tooltip,
   Divider,
+  Progress,
+  Collapse,
+  Badge,
 } from 'antd';
 import {
   RobotOutlined,
@@ -39,6 +42,14 @@ import {
   AppstoreOutlined,
   EditOutlined,
   SafetyCertificateOutlined,
+  RiseOutlined,
+  StarOutlined,
+  FireOutlined,
+  AlertOutlined,
+  BarChartOutlined,
+  AimOutlined,
+  HeartOutlined,
+  NotificationOutlined,
 } from '@ant-design/icons';
 import {
   WorkflowSteps,
@@ -51,17 +62,49 @@ import {
 import { useCreationWorkflow } from '../hooks/useCreationWorkflow';
 import { aiApi } from '../api/client';
 
-const { Text, Paragraph } = Typography;
+const { Text, Paragraph, Title } = Typography;
 const { TextArea } = Input;
+const { Panel } = Collapse;
 
-// 快捷模板 - 根据内容类型动态生成
+// 营销角度图标映射
+const marketingAngleIcons: Record<string, React.ReactNode> = {
+  '痛点式': <AlertOutlined style={{ color: '#f5222d' }} />,
+  '渴望式': <StarOutlined style={{ color: '#fa8c16' }} />,
+  '好奇式': <BulbOutlined style={{ color: '#1677ff' }} />,
+  '社交证明式': <HeartOutlined style={{ color: '#eb2f96' }} />,
+};
+
+// 评分颜色
+ const getScoreColor = (score: number) => {
+  if (score >= 80) return '#52c41a';
+  if (score >= 60) return '#1677ff';
+  if (score >= 40) return '#fa8c16';
+  return '#f5222d';
+};
+
+// 互动等级映射
+const engagementConfig = {
+  high: { color: '#52c41a', text: '高互动潜力' },
+  medium: { color: '#fa8c16', text: '中等互动潜力' },
+  low: { color: '#f5222d', text: '互动潜力待提升' },
+};
+
+// 快捷模板 - 扩展为12个分场景营销模板
 const getQuickTemplates = (type: 'auto' | 'image' | 'video') => {
-  const contentWord = type === 'image' ? '图片' : (type === 'video' ? '视频' : '内容');
+  const w = type === 'image' ? '图片' : (type === 'video' ? '视频' : '内容');
   return [
-    { label: '美食推广', value: `制作一个美食推广${contentWord}，突出产品特色和口感` },
-    { label: '产品展示', value: `创作一个产品展示${contentWord}，展示产品功能和使用场景` },
-    { label: '活动宣传', value: `制作一个活动宣传${contentWord}，突出活动亮点和优惠信息` },
-    { label: '品牌故事', value: `创作一个品牌故事${contentWord}，展示品牌理念和发展历程` },
+    { label: '餐饮美食', value: `制作一个餐饮美食${w}，突出小龙虾麺辣鲜香的特色和口感` },
+    { label: '限时促销', value: `制作限时促销${w}，突出居家优惠力度，名额有限算尽` },
+    { label: '探店打卡', value: `创作网红探店${w}，真实测评枯山小龙虾隐藏菜单揭秘` },
+    { label: '新品发布', value: `制作新品首发${w}，全新口味惊喜揭晓，先到先得帕山小龙虾` },
+    { label: '节日营销', value: `制作节日限定品版${w}，节日特供礼盒送礼送心意的最佳选择` },
+    { label: '品牌故事', value: `创作品牌故事${w}，展示坑位山小龙虾工匠匹心精神和十年小龙虾心得` },
+    { label: '用户证言', value: `制作原汁鸿顾客来店好评${w}，展示真实顾客口碑，让数据说话` },
+    { label: '教程干货', value: `制作小龙虾处理教程${w}，3步学会最鲜小龙虾做法，收藏备用` },
+    { label: '对比测评', value: `制作南昌鉲酱小龙虾 PK 武汉小龙虾${w}，真实常2家对比，不夸大` },
+    { label: '幕后揭秘', value: `拍摄小龙虾封山制作全过程${w}，揭秘珍宝配方，品质看得见` },
+    { label: '福利互动', value: `制作福利互动${w}，关注留言抽奖，送出小龙虾大礼包` },
+    { label: '情感共鸣', value: `创作情感共鸣${w}，那个让你念念不忘的麺辣味道和兒时记忆` },
   ];
 };
 
@@ -75,9 +118,12 @@ const AICreator: React.FC = () => {
   const [historyDrawerVisible, setHistoryDrawerVisible] = useState(false);
   const [templateDrawerVisible, setTemplateDrawerVisible] = useState(false);
   
-  // 质量校验状态
+  // 营销评估状态
   const [qualityCheckResult, setQualityCheckResult] = useState<any>(null);
   const [qualityChecking, setQualityChecking] = useState(false);
+  const [marketingEvaluation, setMarketingEvaluation] = useState<any>(null);
+  const [marketingEvaluating, setMarketingEvaluating] = useState(false);
+  const [hooksLoading, setHooksLoading] = useState(false);
 
   // 使用工作流 Hook
   const {
@@ -222,6 +268,7 @@ const AICreator: React.FC = () => {
     
     // 清除之前的校验结果
     setQualityCheckResult(null);
+    setMarketingEvaluation(null);
     
     try {
       // 重新执行文案生成步骤
@@ -231,6 +278,80 @@ const AICreator: React.FC = () => {
       message.error(err.message || '重新生成失败');
     }
   }, [task?.id, executeStep]);
+
+  // 营销潜力评估
+  const handleMarketingEvaluate = useCallback(async () => {
+    if (!result?.copywriting) {
+      message.error('请先生成文案');
+      return;
+    }
+
+    setMarketingEvaluating(true);
+    setMarketingEvaluation(null);
+
+    try {
+      const response = await aiApi.marketingEvaluate({
+        title: result.copywriting.title,
+        description: result.copywriting.description,
+        hashtags: result.copywriting.hashtags,
+        contentType: result.analysis?.contentType,
+      });
+
+      if (response.data.success) {
+        setMarketingEvaluation(response.data.data);
+        const score = response.data.data.score;
+        if (score >= 75) {
+          message.success(`营销评分：${score}分 ！内容具有较高营销潜力`);
+        } else if (score >= 50) {
+          message.info(`营销评分：${score}分，评估建议可进一步优化`);
+        } else {
+          message.warning(`营销评分：${score}分，建议根据建议优化文案`);
+        }
+      } else {
+        message.error(response.data.error || '评估失败');
+      }
+    } catch (err: any) {
+      message.error(err.message || '评估失败');
+    } finally {
+      setMarketingEvaluating(false);
+    }
+  }, [result]);
+
+  // 生成内容开场钩子
+  const handleGenerateHooks = useCallback(async () => {
+    if (!result?.analysis) {
+      message.error('请先完成需求分析');
+      return;
+    }
+
+    setHooksLoading(true);
+    try {
+      const response = await aiApi.generateHooks({
+        theme: result.analysis.theme,
+        targetAudience: result.analysis.targetAudience,
+        keyPoints: result.analysis.keyPoints,
+      });
+
+      if (response.data.success) {
+        const hooks: string[] = response.data.data.hooks || [];
+        message.success(`已生成 ${hooks.length} 个开场钩子`);
+        // 将钩子添加到分析结果显示中（通过更新 task）
+      } else {
+        message.error(response.data.error || '钩子生成失败');
+      }
+    } catch (err: any) {
+      message.error(err.message || '钩子生成失败');
+    } finally {
+      setHooksLoading(false);
+    }
+  }, [result]);
+
+  // 切换备选标题
+  const handleUseAlternativeTitle = useCallback((title: string) => {
+    if (!result?.copywriting) return;
+    navigator.clipboard.writeText(title);
+    message.success('备选标题已复制到剪贴板');
+  }, [result]);
 
   return (
     <div>
@@ -422,6 +543,134 @@ const AICreator: React.FC = () => {
                   </Space>
                 </Col>
               </Row>
+
+              {/* 营销策略卡片 */}
+              {(result.analysis as any).marketingAngle && (
+                <>
+                  <Divider style={{ margin: '16px 0' }} />
+                  <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12, fontWeight: 600 }}>
+                    <RiseOutlined style={{ marginRight: 6, color: '#1677ff' }} />
+                    营销策略建议
+                  </div>
+                  <Row gutter={[16, 12]}>
+                    {/* 营销角度 */}
+                    <Col span={24}>
+                      <div style={{
+                        padding: '10px 14px',
+                        background: '#fff7e6',
+                        borderRadius: 8,
+                        border: '1px solid #ffd591',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 10,
+                      }}>
+                        <div style={{ flexShrink: 0, marginTop: 2 }}>
+                          {marketingAngleIcons[(result.analysis as any).marketingAngle?.split('（')[0]] || <AimOutlined style={{ color: '#fa8c16' }} />}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 12, color: '#8c6d00', marginBottom: 4 }}>营销角度</div>
+                          <Text style={{ fontSize: 13 }}>{(result.analysis as any).marketingAngle}</Text>
+                        </div>
+                      </div>
+                    </Col>
+
+                    {/* 情感触发词 */}
+                    {(result.analysis as any).emotionalTriggers?.length > 0 && (
+                      <Col span={24}>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+                          <FireOutlined style={{ marginRight: 4, color: '#f5222d' }} />
+                          情感触发词
+                        </div>
+                        <Space wrap size={6}>
+                          {(result.analysis as any).emotionalTriggers.map((trigger: string, i: number) => (
+                            <Tag key={i} color="red" style={{ cursor: 'pointer' }}
+                              onClick={() => copyToClipboard(trigger, `trigger-${i}`)}
+                            >
+                              {trigger}
+                            </Tag>
+                          ))}
+                        </Space>
+                      </Col>
+                    )}
+
+                    {/* 内容钩子 */}
+                    {(result.analysis as any).contentHooks?.length > 0 && (
+                      <Col span={24}>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+                          <NotificationOutlined style={{ marginRight: 4, color: '#1677ff' }} />
+                          开场钩子建议（点击复制）
+                        </div>
+                        <Space direction="vertical" style={{ width: '100%' }} size={6}>
+                          {(result.analysis as any).contentHooks.map((hook: string, i: number) => (
+                            <div key={i}
+                              style={{
+                                padding: '8px 12px',
+                                background: '#f0f5ff',
+                                borderRadius: 6,
+                                border: '1px solid #adc6ff',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                              }}
+                              onClick={() => copyToClipboard(hook, `hook-${i}`)}
+                            >
+                              <Text style={{ fontSize: 13, flex: 1 }}>{hook}</Text>
+                              <CopyOutlined style={{ color: '#1677ff', marginLeft: 8, flexShrink: 0 }} />
+                            </div>
+                          ))}
+                        </Space>
+                      </Col>
+                    )}
+
+                    {/* 平台优化建议 */}
+                    {(result.analysis as any).platformTips?.length > 0 && (
+                      <Col span={24}>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+                          <BarChartOutlined style={{ marginRight: 4, color: '#52c41a' }} />
+                          发布优化建议
+                        </div>
+                        <Space direction="vertical" style={{ width: '100%' }} size={4}>
+                          {(result.analysis as any).platformTips.map((tip: string, i: number) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                              <span style={{ color: '#52c41a', fontWeight: 700, flexShrink: 0 }}>·</span>
+                              <Text style={{ fontSize: 12, color: '#374151' }}>{tip}</Text>
+                            </div>
+                          ))}
+                        </Space>
+                      </Col>
+                    )}
+
+                    {/* 受众痛点 */}
+                    {(result.analysis as any).audiencePainPoints?.length > 0 && (
+                      <Col span={24}>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+                          <AlertOutlined style={{ marginRight: 4, color: '#f5222d' }} />
+                          目标受众痛点
+                        </div>
+                        <Space wrap size={6}>
+                          {(result.analysis as any).audiencePainPoints.map((pain: string, i: number) => (
+                            <Tag key={i} color="orange">{pain}</Tag>
+                          ))}
+                        </Space>
+                      </Col>
+                    )}
+                    
+                    {/* 生成钩子按钮 */}
+                    <Col span={24}>
+                      <Button
+                        size="small"
+                        icon={<NotificationOutlined />}
+                        onClick={handleGenerateHooks}
+                        loading={hooksLoading}
+                        type="dashed"
+                      >
+                        重新生成开场钩子
+                      </Button>
+                    </Col>
+                  </Row>
+                </>
+              )}
             </Card>
           )}
         </Col>
@@ -584,19 +833,124 @@ const AICreator: React.FC = () => {
                     ))}
                   </Space>
                 </div>
+
+                {/* 营销增强信息：行动号召 + 备选标题 */}
+                {((result.copywriting as any).callToAction || (result.copywriting as any).alternativeTitles?.length > 0) && (
+                  <>
+                    <Divider style={{ margin: '14px 0' }} />
+
+                    {/* 行动号召语 */}
+                    {(result.copywriting as any).callToAction && (
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+                          <SendOutlined style={{ marginRight: 4, color: '#1677ff' }} />
+                          行动号召语
+                        </div>
+                        <div style={{
+                          padding: '8px 12px',
+                          background: 'linear-gradient(135deg, #e6f4ff, #f0f5ff)',
+                          borderRadius: 6,
+                          border: '1px solid #91caff',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}>
+                          <Text strong style={{ color: '#1677ff', fontSize: 13 }}>
+                            {(result.copywriting as any).callToAction}
+                          </Text>
+                          <Tooltip title="复制">
+                            <Button type="text" size="small"
+                              icon={<CopyOutlined style={{ color: '#1677ff' }} />}
+                              onClick={() => copyToClipboard((result.copywriting as any).callToAction, 'cta')}
+                            />
+                          </Tooltip>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 备选标题 */}
+                    {(result.copywriting as any).alternativeTitles?.length > 0 && (
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+                          <EditOutlined style={{ marginRight: 4 }} />
+                          备选标题（点击复制）
+                        </div>
+                        <Space direction="vertical" style={{ width: '100%' }} size={6}>
+                          {(result.copywriting as any).alternativeTitles.map((t: string, i: number) => (
+                            <div key={i}
+                              style={{
+                                padding: '8px 12px',
+                                background: '#fafafa',
+                                borderRadius: 6,
+                                border: '1px solid #e5e7eb',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                              }}
+                              onClick={() => handleUseAlternativeTitle(t)}
+                            >
+                              <Text style={{ fontSize: 13, flex: 1 }}>{t}</Text>
+                              <CopyOutlined style={{ color: '#9ca3af', marginLeft: 8, flexShrink: 0 }} />
+                            </div>
+                          ))}
+                        </Space>
+                      </div>
+                    )}
+
+                    {/* 营销评分（AI自评） */}
+                    {(result.copywriting as any).marketingScore != null && (
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+                          <BarChartOutlined style={{ marginRight: 4, color: '#52c41a' }} />
+                          AI初始评分
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <Progress
+                            type="circle"
+                            size={56}
+                            percent={(result.copywriting as any).marketingScore}
+                            strokeColor={getScoreColor((result.copywriting as any).marketingScore)}
+                            format={val => <span style={{ fontSize: 13, fontWeight: 600 }}>{val}</span>}
+                          />
+                          <div style={{ flex: 1 }}>
+                            {(result.copywriting as any).improvementSuggestions?.map((s: string, i: number) => (
+                              <div key={i} style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, display: 'flex', gap: 4 }}>
+                                <span style={{ color: '#1677ff', flexShrink: 0 }}>{i + 1}.</span>
+                                <span>{s}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
                 
                 <Divider style={{ margin: '16px 0' }} />
                 
-                {/* 质量校验按钮 */}
-                <Button
-                  type="default"
-                  icon={<SafetyCertificateOutlined />}
-                  onClick={handleQualityCheck}
-                  loading={qualityChecking}
-                  block
-                >
-                  内容质量校验
-                </Button>
+                {/* 质量校验和营销评估按钮 */}
+                <Space style={{ width: '100%' }} direction="vertical" size={8}>
+                  <Button
+                    type="default"
+                    icon={<SafetyCertificateOutlined />}
+                    onClick={handleQualityCheck}
+                    loading={qualityChecking}
+                    block
+                  >
+                    内容质量校验
+                  </Button>
+                  <Button
+                    type="primary"
+                    ghost
+                    icon={<RiseOutlined />}
+                    onClick={handleMarketingEvaluate}
+                    loading={marketingEvaluating}
+                    block
+                  >
+                    评估营销潜力
+                  </Button>
+                </Space>
               </Card>
             )}
             
@@ -611,6 +965,130 @@ const AICreator: React.FC = () => {
                   onCopySuggestion={handleCopySuggestion}
                 />
               </div>
+            )}
+
+            {/* 营销潜力评估结果 */}
+            {marketingEvaluation && (
+              <Card
+                title={
+                  <Space>
+                    <RiseOutlined style={{ color: '#1677ff' }} />
+                    <span>营销潜力评估</span>
+                    <Badge
+                      count={`${marketingEvaluation.score}分`}
+                      style={{
+                        backgroundColor: getScoreColor(marketingEvaluation.score),
+                        fontSize: 12,
+                      }}
+                    />
+                  </Space>
+                }
+                style={{ marginBottom: 24 }}
+                extra={
+                  <Tag color={engagementConfig[marketingEvaluation.predictedEngagement as keyof typeof engagementConfig]?.color}>
+                    {engagementConfig[marketingEvaluation.predictedEngagement as keyof typeof engagementConfig]?.text}
+                  </Tag>
+                }
+              >
+                {/* 各维度评分 */}
+                <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+                  {[
+                    { label: '标题吸引力', value: marketingEvaluation.dimensions.titleAttractiveness },
+                    { label: '情感共鸣', value: marketingEvaluation.dimensions.emotionalResonance },
+                    { label: '行动引导', value: marketingEvaluation.dimensions.callToActionStrength },
+                    { label: '话题质量', value: marketingEvaluation.dimensions.hashtagQuality },
+                  ].map(({ label, value }) => (
+                    <Col span={12} key={label}>
+                      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>{label}</div>
+                      <Progress
+                        percent={value}
+                        size="small"
+                        strokeColor={getScoreColor(value)}
+                        format={val => <span style={{ fontSize: 11 }}>{val}</span>}
+                      />
+                    </Col>
+                  ))}
+                </Row>
+
+                {/* 建议发布时间 */}
+                <div style={{
+                  padding: '8px 12px',
+                  background: '#f6ffed',
+                  borderRadius: 6,
+                  border: '1px solid #b7eb8f',
+                  marginBottom: 12,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}>
+                  <ClockCircleOutlined style={{ color: '#52c41a', flexShrink: 0 }} />
+                  <Text style={{ fontSize: 12 }}>
+                    <span style={{ color: '#6b7280' }}>建议发布时间：</span>
+                    <span style={{ color: '#374151', fontWeight: 500 }}>{marketingEvaluation.bestPublishTime}</span>
+                  </Text>
+                </div>
+
+                {/* 内容钩子建议 */}
+                {marketingEvaluation.contentHooks?.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 6 }}>
+                      <NotificationOutlined style={{ marginRight: 4, color: '#1677ff' }} />
+                      开场钩子建议
+                    </div>
+                    <Space direction="vertical" style={{ width: '100%' }} size={6}>
+                      {marketingEvaluation.contentHooks.map((hook: string, i: number) => (
+                        <div key={i}
+                          style={{
+                            padding: '8px 12px',
+                            background: '#f0f5ff',
+                            borderRadius: 6,
+                            border: '1px solid #adc6ff',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                          onClick={() => copyToClipboard(hook, `eval-hook-${i}`)}
+                        >
+                          <Text style={{ fontSize: 12, flex: 1 }}>{hook}</Text>
+                          <CopyOutlined style={{ color: '#1677ff', marginLeft: 8, flexShrink: 0, fontSize: 12 }} />
+                        </div>
+                      ))}
+                    </Space>
+                  </div>
+                )}
+
+                {/* 改进建议 */}
+                {marketingEvaluation.suggestions?.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
+                      <StarOutlined style={{ marginRight: 4, color: '#fa8c16' }} />
+                      改进建议
+                    </div>
+                    <Space direction="vertical" style={{ width: '100%' }} size={6}>
+                      {marketingEvaluation.suggestions.map((s: string, i: number) => (
+                        <Alert
+                          key={i}
+                          message={s}
+                          type="info"
+                          showIcon={false}
+                          style={{ fontSize: 12, padding: '6px 10px' }}
+                        />
+                      ))}
+                    </Space>
+                  </>
+                )}
+
+                <Button
+                  size="small"
+                  icon={<ReloadOutlined />}
+                  onClick={handleMarketingEvaluate}
+                  loading={marketingEvaluating}
+                  style={{ marginTop: 12 }}
+                >
+                  重新评估
+                </Button>
+              </Card>
             )}
 
             {/* 操作按钮 */}

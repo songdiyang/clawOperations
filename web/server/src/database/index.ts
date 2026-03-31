@@ -2,6 +2,7 @@ import low from 'lowdb';
 import FileSync from 'lowdb/adapters/FileSync';
 import path from 'path';
 import fs from 'fs';
+import bcrypt from 'bcryptjs';
 import { User, UserAuthConfig } from '../models/user';
 import { CreationTask, CreationTemplate } from '../../../../src/models/types';
 
@@ -26,6 +27,11 @@ interface DatabaseSchema {
     };
     ai: {
       deepseek_api_key: string | null;
+      deepseek_base_url: string | null;
+      doubao_api_key: string | null;
+      doubao_base_url: string | null;
+      doubao_endpoint_id_image: string | null;
+      doubao_endpoint_id_video: string | null;
       updated_at: string | null;
     };
   };
@@ -68,6 +74,11 @@ db.defaults({
     },
     ai: {
       deepseek_api_key: null,
+      deepseek_base_url: null,
+      doubao_api_key: null,
+      doubao_base_url: null,
+      doubao_endpoint_id_image: null,
+      doubao_endpoint_id_video: null,
       updated_at: null,
     },
   },
@@ -76,6 +87,58 @@ db.defaults({
     nextAuthConfigId: 1,
   },
 }).write();
+
+// 创建默认管理员账号（如果不存在）
+const createDefaultAdmin = async () => {
+  const users = db.get('users').value();
+  const adminExists = users.some((u: User) => u.role === 'admin');
+  
+  if (!adminExists) {
+    const SALT_ROUNDS = 10;
+    const passwordHash = bcrypt.hashSync('Admin@123456', SALT_ROUNDS);
+    const now = new Date().toISOString();
+    
+    const meta = db.get('_meta').value();
+    const newId = meta.nextUserId;
+    db.set('_meta.nextUserId', newId + 1).write();
+    
+    const adminUser: User = {
+      id: newId,
+      username: 'admin',
+      email: 'admin@clawoperations.local',
+      password_hash: passwordHash,
+      phone: null,
+      avatar: null,
+      role: 'admin',
+      is_active: 1,
+      created_at: now,
+      updated_at: now,
+    };
+    
+    db.get('users').push(adminUser).write();
+    console.log('👤 Default admin account created (username: admin, password: Admin@123456)');
+  }
+};
+
+// 迁移旧的 AI 配置结构（如果缺少新字段）
+const migrateAIConfig = () => {
+  const aiConfig = db.get('app_config.ai').value() as Record<string, unknown> | null;
+  if (aiConfig && !('doubao_api_key' in aiConfig)) {
+    db.set('app_config.ai', {
+      deepseek_api_key: (aiConfig.deepseek_api_key as string) || null,
+      deepseek_base_url: null,
+      doubao_api_key: null,
+      doubao_base_url: null,
+      doubao_endpoint_id_image: null,
+      doubao_endpoint_id_video: null,
+      updated_at: (aiConfig.updated_at as string) || null,
+    }).write();
+    console.log('🔄 AI config schema migrated');
+  }
+};
+
+migrateAIConfig();
+createDefaultAdmin();
 
 console.log('📦 Database initialized successfully');
 

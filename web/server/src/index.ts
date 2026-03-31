@@ -9,13 +9,27 @@ import uploadRoutes from './routes/upload';
 import publishRoutes from './routes/publish';
 import aiRoutes from './routes/ai';
 import userRoutes from './routes/user';
+import systemRoutes from './routes/system';
+import { systemConfigService } from './services/system-config-service';
 
-[
-  path.resolve(__dirname, '../../../.env'),
-  path.resolve(__dirname, '../.env'),
-].forEach((envPath) => {
-  dotenv.config({ path: envPath, override: false });
-});
+// 获取项目根目录（处理编译后路径问题）
+const getProjectRoot = () => {
+  const cwd = process.cwd();
+  // 检查是否在 clawoperations 目录下
+  if (cwd.toLowerCase().includes('clawoperations')) {
+    // 移除可能的 web/server 或 dist 后缀
+    return cwd.replace(/[\/]web[\/]server.*$/, '').replace(/[\/]dist.*$/, '');
+  }
+  return cwd;
+};
+
+const projectRoot = getProjectRoot();
+
+// 加载环境变量（使用项目根目录）
+const envPath = path.join(projectRoot, '.env');
+console.log(`📂 Project root: ${projectRoot}`);
+console.log(`🔑 Loading env from: ${envPath}`);
+dotenv.config({ path: envPath });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -26,11 +40,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // 静态文件服务（上传的视频文件）
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-// 参考图等文件服务（从项目根目录）
-app.use('/uploads', express.static(path.join(__dirname, '../../../uploads')));
-// AI 生成的内容文件服务（视频/图片）- 使用项目根目录
-app.use('/generated', express.static(path.join(__dirname, '../../../generated')));
+app.use('/uploads', express.static(path.join(projectRoot, 'uploads')));
+// AI 生成的内容文件服务（视频/图片）
+app.use('/generated', express.static(path.join(projectRoot, 'generated')));
 
 // API 路由
 app.use('/api/user', userRoutes);
@@ -38,6 +50,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/publish', publishRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/system', systemRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {
@@ -56,6 +69,9 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 // 初始化数据库并启动服务器
 initDatabase()
   .then(() => {
+    // 从数据库加载系统配置到环境变量
+    systemConfigService.loadConfigToEnv();
+    
     // 从环境变量加载抖音配置（如果已配置）
     const douyinConfigLoaded = initPublisherFromEnv();
     if (douyinConfigLoaded) {
@@ -66,7 +82,8 @@ initDatabase()
     
     app.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
-      console.log(`📁 Upload directory: ${path.join(__dirname, '../uploads')}`);
+      console.log(`📁 Upload directory: ${path.join(projectRoot, 'uploads')}`);
+      console.log(`📁 Generated directory: ${path.join(projectRoot, 'generated')}`);
     });
   })
   .catch((error) => {
