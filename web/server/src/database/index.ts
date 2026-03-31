@@ -191,12 +191,12 @@ async function ensureLegacySchemaCompatibility(p: Pool): Promise<void> {
   await p.execute(
     `UPDATE creation_tasks
         SET task_type = CASE
-          WHEN id LIKE 'history\\_%' ESCAPE '\\' THEN 'history'
-          WHEN id LIKE 'draft\\_%' ESCAPE '\\' THEN 'draft'
+          WHEN LEFT(id, 8) = 'history_' THEN 'history'
+          WHEN LEFT(id, 6) = 'draft_' THEN 'draft'
           ELSE task_type
         END
-      WHERE id LIKE 'history\\_%' ESCAPE '\\'
-         OR id LIKE 'draft\\_%' ESCAPE '\\'`
+      WHERE LEFT(id, 8) = 'history_'
+         OR LEFT(id, 6) = 'draft_'`
   );
 
   await ensureColumn(p, 'creation_templates', 'content_type', 'VARCHAR(32) NULL AFTER `requirement`');
