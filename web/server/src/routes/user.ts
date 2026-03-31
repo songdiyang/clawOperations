@@ -59,7 +59,7 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // 查找用户
-    const user = userService.findByAccount(dto.account);
+    const user = await userService.findByAccount(dto.account);
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -85,7 +85,10 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // 生成令牌
-    const publicInfo = userService.getUserPublicInfo(user.id)!;
+    const publicInfo = await userService.getUserPublicInfo(user.id);
+    if (!publicInfo) {
+      return res.status(500).json({ success: false, error: '获取用户信息失败' });
+    }
     const token = generateToken(publicInfo, dto.remember);
     const expiresIn = getTokenExpiresIn(dto.remember);
 
@@ -108,10 +111,10 @@ router.post('/login', async (req: Request, res: Response) => {
 /**
  * GET /api/user/profile - 获取当前用户信息
  */
-router.get('/profile', authMiddleware, (req: Request, res: Response) => {
+router.get('/profile', authMiddleware, async (req: Request, res: Response) => {
   try {
     const userId = req.userId!;
-    const user = userService.getUserPublicInfo(userId);
+    const user = await userService.getUserPublicInfo(userId);
 
     if (!user) {
       return res.status(404).json({
@@ -188,7 +191,7 @@ router.put('/password', authMiddleware, async (req: Request, res: Response) => {
  * POST /api/user/logout - 用户登出
  * 注意：JWT 是无状态的，实际登出是在前端清除 token
  */
-router.post('/logout', authMiddleware, (req: Request, res: Response) => {
+router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
   res.json({
     success: true,
     message: '登出成功',
@@ -198,7 +201,7 @@ router.post('/logout', authMiddleware, (req: Request, res: Response) => {
 /**
  * GET /api/user/check - 检查登录状态
  */
-router.get('/check', authMiddleware, (req: Request, res: Response) => {
+router.get('/check', authMiddleware, async (req: Request, res: Response) => {
   res.json({
     success: true,
     data: {

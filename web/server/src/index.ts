@@ -68,9 +68,9 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 
 // 初始化数据库并启动服务器
 initDatabase()
-  .then(() => {
+  .then(async () => {
     // 从数据库加载系统配置到环境变量
-    systemConfigService.loadConfigToEnv();
+    await systemConfigService.loadConfigToEnv();
     
     // 从环境变量加载抖音配置（如果已配置）
     const douyinConfigLoaded = initPublisherFromEnv();

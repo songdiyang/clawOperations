@@ -1,188 +1,163 @@
-import low from 'lowdb';
-import FileSync from 'lowdb/adapters/FileSync';
+/**
+ * 数据库连接层 - MySQL + Redis
+ */
+import mysql, { Pool, PoolConnection, RowDataPacket, ResultSetHeader } from 'mysql2/promise';
+import Redis from 'ioredis';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
-import { User, UserAuthConfig } from '../models/user';
-import { CreationTask, CreationTemplate } from '../../../../src/models/types';
 
-// 数据库类型定义
-interface DatabaseSchema {
-  users: User[];
-  user_auth_configs: UserAuthConfig[];
-  // 创作相关
-  creation_drafts: CreationTask[];
-  creation_history: CreationTask[];
-  creation_templates: CreationTemplate[];
-  app_config: {
-    douyin: {
-      client_key: string | null;
-      client_secret: string | null;
-      redirect_uri: string | null;
-      access_token: string | null;
-      refresh_token: string | null;
-      open_id: string | null;
-      expires_at: number | null;
-      updated_at: string | null;
-    };
-    ai: {
-      deepseek_api_key: string | null;
-      deepseek_base_url: string | null;
-      doubao_api_key: string | null;
-      doubao_base_url: string | null;
-      doubao_endpoint_id_image: string | null;
-      doubao_endpoint_id_video: string | null;
-      updated_at: string | null;
-    };
-  };
-  _meta: {
-    nextUserId: number;
-    nextAuthConfigId: number;
-  };
+let pool: Pool | null = null;
+let redisClient: Redis | null = null;
+
+/**
+ * 获取 MySQL 连接池
+ */
+export function getPool(): Pool {
+  if (!pool) {
+    throw new Error('MySQL pool not initialized. Call initDatabase() first.');
+  }
+  return pool;
 }
 
-// 数据库文件路径
-const DB_DIR = path.join(__dirname, '../../data');
-const DB_PATH = path.join(DB_DIR, 'db.json');
-
-// 确保数据目录存在
-if (!fs.existsSync(DB_DIR)) {
-  fs.mkdirSync(DB_DIR, { recursive: true });
+/**
+ * 获取 Redis 客户端
+ */
+export function getRedis(): Redis {
+  if (!redisClient) {
+    throw new Error('Redis not initialized. Call initDatabase() first.');
+  }
+  return redisClient;
 }
 
-// 初始化数据库
-const adapter = new FileSync<DatabaseSchema>(DB_PATH);
-const db = low(adapter);
+/**
+ * 将 JS Date 或 ISO 字符串转换为 MySQL DATETIME 格式
+ */
+export function toMysqlDatetime(date?: Date | string | null): string {
+  const d = date ? new Date(date) : new Date();
+  return d.toISOString().slice(0, 19).replace('T', ' ');
+}
 
-// 设置默认数据
-db.defaults({
-  users: [],
-  user_auth_configs: [],
-  creation_drafts: [],
-  creation_history: [],
-  creation_templates: [],
-  app_config: {
-    douyin: {
-      client_key: null,
-      client_secret: null,
-      redirect_uri: null,
-      access_token: null,
-      refresh_token: null,
-      open_id: null,
-      expires_at: null,
-      updated_at: null,
-    },
-    ai: {
-      deepseek_api_key: null,
-      deepseek_base_url: null,
-      doubao_api_key: null,
-      doubao_base_url: null,
-      doubao_endpoint_id_image: null,
-      doubao_endpoint_id_video: null,
-      updated_at: null,
-    },
-  },
-  _meta: {
-    nextUserId: 1,
-    nextAuthConfigId: 1,
-  },
-}).write();
+/**
+ * 将 MySQL DATETIME 字符串转换为 ISO 字符串（带时区 Z）
+ */
+export function fromMysqlDatetime(s: string | Date | null | undefined): string | null {
+  if (!s) return null;
+  if (s instanceof Date) return s.toISOString();
+  // MySQL returns 'YYYY-MM-DD HH:MM:SS'
+  return new Date(s.replace(' ', 'T') + 'Z').toISOString();
+}
 
-// 创建默认管理员账号（如果不存在）
-const createDefaultAdmin = async () => {
-  const users = db.get('users').value();
-  const adminExists = users.some((u: User) => u.role === 'admin');
-  
-  if (!adminExists) {
-    const SALT_ROUNDS = 10;
-    const passwordHash = bcrypt.hashSync('Admin@123456', SALT_ROUNDS);
-    const now = new Date().toISOString();
-    
-    const meta = db.get('_meta').value();
-    const newId = meta.nextUserId;
-    db.set('_meta.nextUserId', newId + 1).write();
-    
-    const adminUser: User = {
-      id: newId,
-      username: 'admin',
-      email: 'admin@clawoperations.local',
-      password_hash: passwordHash,
-      phone: null,
-      avatar: null,
-      role: 'admin',
-      is_active: 1,
-      created_at: now,
-      updated_at: now,
-    };
-    
-    db.get('users').push(adminUser).write();
+/**
+ * 执行 schema SQL，逐条语句运行
+ */
+async function runSchema(p: Pool): Promise<void> {
+  const schemaPath = path.join(__dirname, 'schema.sql');
+  const sql = fs.readFileSync(schemaPath, 'utf-8');
+  const statements = sql
+    .split(';')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && !s.startsWith('--'));
+
+  for (const statement of statements) {
+    try {
+      await p.execute(statement);
+    } catch (err: any) {
+      // 忽略重复键名错误（多次初始化时）
+      if (err.code !== 'ER_DUP_KEYNAME' && err.code !== 'ER_TABLE_EXISTS_ERROR') {
+        throw err;
+      }
+    }
+  }
+}
+
+/**
+ * 创建默认管理员账号
+ */
+async function createDefaultAdmin(p: Pool): Promise<void> {
+  const [rows] = await p.execute<RowDataPacket[]>(
+    "SELECT id FROM users WHERE role = 'admin' LIMIT 1"
+  );
+  if ((rows as RowDataPacket[]).length === 0) {
+    const passwordHash = bcrypt.hashSync('Admin@123456', 10);
+    const now = toMysqlDatetime();
+    await p.execute(
+      'INSERT INTO users (username, email, password_hash, role, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ['admin', 'admin@clawoperations.local', passwordHash, 'admin', 1, now, now]
+    );
     console.log('👤 Default admin account created (username: admin, password: Admin@123456)');
   }
-};
+}
 
-// 迁移旧的 AI 配置结构（如果缺少新字段）
-const migrateAIConfig = () => {
-  const aiConfig = db.get('app_config.ai').value() as Record<string, unknown> | null;
-  if (aiConfig && !('doubao_api_key' in aiConfig)) {
-    db.set('app_config.ai', {
-      deepseek_api_key: (aiConfig.deepseek_api_key as string) || null,
-      deepseek_base_url: null,
-      doubao_api_key: null,
-      doubao_base_url: null,
-      doubao_endpoint_id_image: null,
-      doubao_endpoint_id_video: null,
-      updated_at: (aiConfig.updated_at as string) || null,
-    }).write();
-    console.log('🔄 AI config schema migrated');
+/**
+ * 初始化数据库（启动时调用）
+ */
+export async function initDatabase(): Promise<void> {
+  // 创建 MySQL 连接池
+  pool = mysql.createPool({
+    host: process.env.DB_HOST || '127.0.0.1',
+    port: parseInt(process.env.DB_PORT || '3306'),
+    user: process.env.DB_USER || 'clawops',
+    password: process.env.DB_PASS || 'ClawOps@2024!',
+    database: process.env.DB_NAME || 'clawops',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    charset: 'utf8mb4',
+    timezone: '+00:00',
+    dateStrings: true,
+  });
+
+  // 测试连接
+  const conn = await pool.getConnection();
+  conn.release();
+  console.log('📦 MySQL connected successfully');
+
+  // 创建 Redis 客户端
+  const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+  redisClient = new Redis(redisUrl, {
+    lazyConnect: false,
+    retryStrategy: (times: number) => Math.min(times * 200, 5000),
+    maxRetriesPerRequest: 3,
+  });
+  redisClient.on('connect', () => console.log('🔴 Redis connected successfully'));
+  redisClient.on('error', (err: Error) => console.warn('⚠️  Redis error:', err.message));
+
+  // 执行建表 SQL
+  await runSchema(pool);
+  console.log('📋 Database schema initialized');
+
+  // 创建默认管理员
+  await createDefaultAdmin(pool);
+
+  console.log('✅ Database initialized successfully');
+}
+
+/**
+ * 关闭数据库连接（进程退出时）
+ */
+export async function closeDatabase(): Promise<void> {
+  if (pool) {
+    await pool.end();
+    pool = null;
+    console.log('📦 MySQL connection pool closed');
   }
-};
-
-migrateAIConfig();
-createDefaultAdmin();
-
-console.log('📦 Database initialized successfully');
-
-/**
- * 获取数据库实例
- */
-export function getDatabase() {
-  return db;
+  if (redisClient) {
+    await redisClient.quit();
+    redisClient = null;
+    console.log('🔴 Redis connection closed');
+  }
 }
 
-/**
- * 保存数据库（lowdb 自动保存，此函数保持兼容性）
- */
-export function saveDatabase(): void {
-  db.write();
-}
-
-/**
- * 初始化数据库（兼容异步接口）
- */
-export async function initDatabase(): Promise<typeof db> {
-  return db;
-}
-
-/**
- * 关闭数据库（lowdb 不需要关闭）
- */
-export function closeDatabase(): void {
-  console.log('📦 Database connection closed');
-}
-
-// 进程退出时的清理
-process.on('exit', () => {
-  closeDatabase();
-});
-
-process.on('SIGINT', () => {
-  closeDatabase();
+// 进程退出时清理
+process.on('SIGINT', async () => {
+  await closeDatabase();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
-  closeDatabase();
+process.on('SIGTERM', async () => {
+  await closeDatabase();
   process.exit(0);
 });
 
-export default db;
+export default { getPool, getRedis, initDatabase, closeDatabase };

@@ -82,7 +82,7 @@ router.put('/config/ai', adminMiddleware, async (req: Request, res: Response) =>
       return;
     }
 
-    const updatedConfig = systemConfigService.updateAIConfig(dto);
+    const updatedConfig = await systemConfigService.updateAIConfig(dto);
     const maskedConfig = systemConfigService.getMaskedAIConfig();
 
     res.json({
@@ -146,7 +146,7 @@ router.put('/config/douyin', adminMiddleware, async (req: Request, res: Response
       return;
     }
 
-    const updatedConfig = systemConfigService.updateDouyinConfig(dto);
+    const updatedConfig = await systemConfigService.updateDouyinConfig(dto);
     const maskedConfig = systemConfigService.getMaskedDouyinConfig();
 
     res.json({
@@ -170,7 +170,7 @@ router.put('/config/douyin', adminMiddleware, async (req: Request, res: Response
  */
 router.post('/config/reload', adminMiddleware, async (req: Request, res: Response) => {
   try {
-    systemConfigService.loadConfigToEnv();
+    await systemConfigService.loadConfigToEnv();
     res.json({
       success: true,
       message: '配置已重新加载',

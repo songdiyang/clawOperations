@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
-import { getDatabase, saveDatabase } from '../database';
+import { RowDataPacket, ResultSetHeader } from 'mysql2/promise';
+import { getPool, toMysqlDatetime, fromMysqlDatetime } from '../database';
 import {
   User,
   UserPublicInfo,
@@ -12,6 +13,27 @@ import {
 const SALT_ROUNDS = 10;
 
 /**
+ * 将 MySQL 行数据转换为 User 对象
+ */
+function rowToUser(row: RowDataPacket): User {
+  return {
+    id: row.id as number,
+    username: row.username as string,
+    email: row.email as string,
+    password_hash: row.password_hash as string,
+    phone: row.phone as string | null,
+    avatar: row.avatar as string | null,
+    role: row.role as 'user' | 'admin',
+    is_active: row.is_active as number,
+    douyin_open_id: row.douyin_open_id as string | null,
+    douyin_nickname: row.douyin_nickname as string | null,
+    douyin_avatar: row.douyin_avatar as string | null,
+    created_at: fromMysqlDatetime(row.created_at as string) || new Date().toISOString(),
+    updated_at: fromMysqlDatetime(row.updated_at as string) || new Date().toISOString(),
+  };
+}
+
+/**
  * 用户服务类
  */
 export class UserService {
@@ -19,19 +41,14 @@ export class UserService {
    * 创建用户
    */
   async createUser(dto: CreateUserDTO): Promise<UserPublicInfo> {
-    const db = getDatabase();
+    const pool = getPool();
 
-    // 验证用户名格式
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(dto.username)) {
       throw new Error('用户名必须是 3-20 位字母、数字或下划线');
     }
-
-    // 验证邮箱格式
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dto.email)) {
       throw new Error('邮箱格式不正确');
     }
-
-    // 验证密码强度
     if (dto.password.length < 8) {
       throw new Error('密码长度至少 8 位');
     }
@@ -39,142 +56,121 @@ export class UserService {
       throw new Error('密码必须包含字母和数字');
     }
 
-    // 检查用户名是否已存在
-    const existingUsername = this.findByUsername(dto.username);
-    if (existingUsername) {
-      throw new Error('用户名已被使用');
-    }
+    const existingUsername = await this.findByUsername(dto.username);
+    if (existingUsername) throw new Error('用户名已被使用');
 
-    // 检查邮箱是否已存在
-    const existingEmail = this.findByEmail(dto.email);
-    if (existingEmail) {
-      throw new Error('邮箱已被注册');
-    }
+    const existingEmail = await this.findByEmail(dto.email);
+    if (existingEmail) throw new Error('邮箱已被注册');
 
-    // 加密密码
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+    const now = toMysqlDatetime();
 
-    // 获取新 ID
-    const meta = db.get('_meta').value();
-    const newId = meta.nextUserId;
-    db.set('_meta.nextUserId', newId + 1).write();
+    const [result] = await pool.execute<ResultSetHeader>(
+      'INSERT INTO users (username, email, password_hash, phone, role, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [dto.username, dto.email, passwordHash, dto.phone || null, 'user', 1, now, now]
+    );
 
-    // 创建用户
-    const now = new Date().toISOString();
-    const newUser: User = {
-      id: newId,
-      username: dto.username,
-      email: dto.email,
-      password_hash: passwordHash,
-      phone: dto.phone || null,
-      avatar: null,
-      role: 'user',
-      is_active: 1,
-      created_at: now,
-      updated_at: now,
-    };
+    const newUser = await this.findById(result.insertId);
+    return toUserPublicInfo(newUser!);
+  }
 
-    db.get('users').push(newUser).write();
+  /**
+   * 通过用户名查找用户
+   */
+  async findByUsername(username: string): Promise<User | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      'SELECT * FROM users WHERE username = ?',
+      [username]
+    );
+    return rows.length > 0 ? rowToUser(rows[0]) : null;
+  }
 
-    return toUserPublicInfo(newUser);
+  /**
+   * 通过邮箱查找用户
+   */
+  async findByEmail(email: string): Promise<User | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      'SELECT * FROM users WHERE email = ?',
+      [email]
+    );
+    return rows.length > 0 ? rowToUser(rows[0]) : null;
+  }
+
+  /**
+   * 通过 ID 查找用户
+   */
+  async findById(id: number): Promise<User | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      'SELECT * FROM users WHERE id = ?',
+      [id]
+    );
+    return rows.length > 0 ? rowToUser(rows[0]) : null;
+  }
+
+  /**
+   * 通过用户名或邮箱查找用户
+   */
+  async findByAccount(account: string): Promise<User | null> {
+    let user = await this.findByUsername(account);
+    if (user) return user;
+    return this.findByEmail(account);
   }
 
   /**
    * 通过抖音 OpenID 查找用户
    */
-  findByDouyinOpenId(openId: string): User | null {
-    const db = getDatabase();
-    const user = db.get('users').find({ douyin_open_id: openId }).value();
-    return user || null;
+  async findByDouyinOpenId(openId: string): Promise<User | null> {
+    const pool = getPool();
+    const [rows] = await pool.execute<RowDataPacket[]>(
+      'SELECT * FROM users WHERE douyin_open_id = ?',
+      [openId]
+    );
+    return rows.length > 0 ? rowToUser(rows[0]) : null;
   }
 
   /**
    * 通过抖音 OAuth 创建或更新用户
    */
   async createOrUpdateFromDouyin(douyinInfo: DouyinUserInfo): Promise<UserPublicInfo> {
-    const db = getDatabase();
-    const existingUser = this.findByDouyinOpenId(douyinInfo.open_id);
+    const pool = getPool();
+    const existingUser = await this.findByDouyinOpenId(douyinInfo.open_id);
 
     if (existingUser) {
-      // 更新现有用户的抖音信息
-      const updates = {
-        douyin_nickname: douyinInfo.nickname,
-        douyin_avatar: douyinInfo.avatar,
-        updated_at: new Date().toISOString(),
-      };
-      db.get('users').find({ id: existingUser.id }).assign(updates).write();
-      const updatedUser = this.findById(existingUser.id);
+      const now = toMysqlDatetime();
+      await pool.execute(
+        'UPDATE users SET douyin_nickname=?, douyin_avatar=?, updated_at=? WHERE id=?',
+        [douyinInfo.nickname, douyinInfo.avatar, now, existingUser.id]
+      );
+      const updatedUser = await this.findById(existingUser.id);
       return toUserPublicInfo(updatedUser!);
     }
 
-    // 创建新用户
-    const meta = db.get('_meta').value();
-    const newId = meta.nextUserId;
-    db.set('_meta.nextUserId', newId + 1).write();
-
-    const now = new Date().toISOString();
-    // 生成随机用户名和临时密码
+    const now = toMysqlDatetime();
     const randomUsername = `douyin_${douyinInfo.open_id.substring(0, 8)}_${Date.now().toString(36)}`;
     const randomPassword = await bcrypt.hash(Math.random().toString(36), SALT_ROUNDS);
 
-    const newUser: User = {
-      id: newId,
-      username: randomUsername,
-      email: `${randomUsername}@douyin.temp`, // 临时邮箱
-      password_hash: randomPassword,
-      phone: null,
-      avatar: douyinInfo.avatar,
-      role: 'user',
-      is_active: 1,
-      douyin_open_id: douyinInfo.open_id,
-      douyin_nickname: douyinInfo.nickname,
-      douyin_avatar: douyinInfo.avatar,
-      created_at: now,
-      updated_at: now,
-    };
+    const [result] = await pool.execute<ResultSetHeader>(
+      'INSERT INTO users (username, email, password_hash, avatar, role, is_active, douyin_open_id, douyin_nickname, douyin_avatar, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        randomUsername,
+        `${randomUsername}@douyin.temp`,
+        randomPassword,
+        douyinInfo.avatar,
+        'user',
+        1,
+        douyinInfo.open_id,
+        douyinInfo.nickname,
+        douyinInfo.avatar,
+        now,
+        now,
+      ]
+    );
 
-    db.get('users').push(newUser).write();
-    return toUserPublicInfo(newUser);
-  }
-
-  /**
-   * 通过用户名查找用户
-   */
-  findByUsername(username: string): User | null {
-    const db = getDatabase();
-    const user = db.get('users').find({ username }).value();
-    return user || null;
-  }
-
-  /**
-   * 通过邮箱查找用户
-   */
-  findByEmail(email: string): User | null {
-    const db = getDatabase();
-    const user = db.get('users').find({ email }).value();
-    return user || null;
-  }
-
-  /**
-   * 通过 ID 查找用户
-   */
-  findById(id: number): User | null {
-    const db = getDatabase();
-    const user = db.get('users').find({ id }).value();
-    return user || null;
-  }
-
-  /**
-   * 通过用户名或邮箱查找用户
-   */
-  findByAccount(account: string): User | null {
-    // 先尝试用户名
-    let user = this.findByUsername(account);
-    if (user) return user;
-
-    // 再尝试邮箱
-    user = this.findByEmail(account);
-    return user;
+    const newUser = await this.findById(result.insertId);
+    return toUserPublicInfo(newUser!);
   }
 
   /**
@@ -188,59 +184,48 @@ export class UserService {
    * 更新用户信息
    */
   async updateUser(userId: number, dto: UpdateUserDTO): Promise<UserPublicInfo> {
-    const db = getDatabase();
-    const user = this.findById(userId);
+    const pool = getPool();
+    const user = await this.findById(userId);
+    if (!user) throw new Error('用户不存在');
 
-    if (!user) {
-      throw new Error('用户不存在');
-    }
-
-    const updates: Partial<User> = {};
+    const setClauses: string[] = [];
+    const values: (string | number | null)[] = [];
 
     if (dto.username !== undefined) {
-      // 验证用户名格式
-      if (!/^[a-zA-Z0-9_]{3,20}$/.test(dto.username)) {
-        throw new Error('用户名必须是 3-20 位字母、数字或下划线');
-      }
-      // 检查是否与其他用户冲突
-      const existing = this.findByUsername(dto.username);
-      if (existing && existing.id !== userId) {
-        throw new Error('用户名已被使用');
-      }
-      updates.username = dto.username;
+      if (!/^[a-zA-Z0-9_]{3,20}$/.test(dto.username)) throw new Error('用户名必须是 3-20 位字母、数字或下划线');
+      const existing = await this.findByUsername(dto.username);
+      if (existing && existing.id !== userId) throw new Error('用户名已被使用');
+      setClauses.push('username = ?');
+      values.push(dto.username);
     }
 
     if (dto.email !== undefined) {
-      // 验证邮箱格式
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dto.email)) {
-        throw new Error('邮箱格式不正确');
-      }
-      // 检查是否与其他用户冲突
-      const existing = this.findByEmail(dto.email);
-      if (existing && existing.id !== userId) {
-        throw new Error('邮箱已被注册');
-      }
-      updates.email = dto.email;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(dto.email)) throw new Error('邮箱格式不正确');
+      const existing = await this.findByEmail(dto.email);
+      if (existing && existing.id !== userId) throw new Error('邮箱已被注册');
+      setClauses.push('email = ?');
+      values.push(dto.email);
     }
 
     if (dto.phone !== undefined) {
-      updates.phone = dto.phone || null;
+      setClauses.push('phone = ?');
+      values.push(dto.phone || null);
     }
 
     if (dto.avatar !== undefined) {
-      updates.avatar = dto.avatar || null;
+      setClauses.push('avatar = ?');
+      values.push(dto.avatar || null);
     }
 
-    if (Object.keys(updates).length > 0) {
-      updates.updated_at = new Date().toISOString();
-      db.get('users').find({ id: userId }).assign(updates).write();
+    if (setClauses.length > 0) {
+      setClauses.push('updated_at = ?');
+      values.push(toMysqlDatetime());
+      values.push(userId);
+      await pool.execute(`UPDATE users SET ${setClauses.join(', ')} WHERE id = ?`, values);
     }
 
-    const updatedUser = this.findById(userId);
-    if (!updatedUser) {
-      throw new Error('更新用户失败');
-    }
-
+    const updatedUser = await this.findById(userId);
+    if (!updatedUser) throw new Error('更新用户失败');
     return toUserPublicInfo(updatedUser);
   }
 
@@ -248,51 +233,31 @@ export class UserService {
    * 修改密码
    */
   async changePassword(userId: number, oldPassword: string, newPassword: string): Promise<void> {
-    const db = getDatabase();
-    const user = this.findById(userId);
+    const pool = getPool();
+    const user = await this.findById(userId);
+    if (!user) throw new Error('用户不存在');
 
-    if (!user) {
-      throw new Error('用户不存在');
-    }
-
-    // 验证旧密码
     const isValid = await this.validatePassword(user, oldPassword);
-    if (!isValid) {
-      throw new Error('原密码错误');
-    }
+    if (!isValid) throw new Error('原密码错误');
 
-    // 验证新密码强度
-    if (newPassword.length < 8) {
-      throw new Error('新密码长度至少 8 位');
-    }
-    if (!/(?=.*[a-zA-Z])(?=.*[0-9])/.test(newPassword)) {
-      throw new Error('新密码必须包含字母和数字');
-    }
+    if (newPassword.length < 8) throw new Error('新密码长度至少 8 位');
+    if (!/(?=.*[a-zA-Z])(?=.*[0-9])/.test(newPassword)) throw new Error('新密码必须包含字母和数字');
 
-    // 加密新密码
     const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-
-    // 更新密码
-    db.get('users')
-      .find({ id: userId })
-      .assign({
-        password_hash: passwordHash,
-        updated_at: new Date().toISOString(),
-      })
-      .write();
+    await pool.execute(
+      'UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?',
+      [passwordHash, toMysqlDatetime(), userId]
+    );
   }
 
   /**
    * 获取用户公开信息
    */
-  getUserPublicInfo(userId: number): UserPublicInfo | null {
-    const user = this.findById(userId);
-    if (!user) {
-      return null;
-    }
+  async getUserPublicInfo(userId: number): Promise<UserPublicInfo | null> {
+    const user = await this.findById(userId);
+    if (!user) return null;
     return toUserPublicInfo(user);
   }
 }
 
-// 导出单例
 export const userService = new UserService();

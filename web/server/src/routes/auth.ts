@@ -16,10 +16,10 @@ const router = Router();
  * 获取认证状态
  * 如果已登录，返回用户的配置状态；否则返回全局状态
  */
-router.get('/status', optionalAuthMiddleware, (req: Request, res: Response) => {
+router.get('/status', optionalAuthMiddleware, async (req: Request, res: Response) => {
   if (req.userId) {
     // 已登录用户，返回用户特定配置状态
-    const status = userAuthConfigService.getStatus(req.userId);
+    const status = await userAuthConfigService.getStatus(req.userId);
     res.json({
       success: true,
       data: status,
@@ -39,7 +39,7 @@ router.get('/status', optionalAuthMiddleware, (req: Request, res: Response) => {
  * 配置认证信息
  * 如果已登录，保存到用户特定配置；否则保存到全局配置
  */
-router.post('/config', optionalAuthMiddleware, (req: Request, res: Response) => {
+router.post('/config', optionalAuthMiddleware, async (req: Request, res: Response) => {
   try {
     const config: DouyinConfig = req.body;
     
@@ -53,7 +53,7 @@ router.post('/config', optionalAuthMiddleware, (req: Request, res: Response) => 
 
     if (req.userId) {
       // 已登录用户，保存到用户配置
-      userAuthConfigService.upsertConfig(req.userId, {
+      await userAuthConfigService.upsertConfig(req.userId, {
         clientKey: config.clientKey,
         clientSecret: config.clientSecret,
         redirectUri: config.redirectUri,
@@ -64,7 +64,7 @@ router.post('/config', optionalAuthMiddleware, (req: Request, res: Response) => 
     }
     
     // 同时保存到全局配置（保持向后兼容）
-    appConfigService.setDouyinConfig({
+    await appConfigService.setDouyinConfig({
       clientKey: config.clientKey,
       clientSecret: config.clientSecret,
       redirectUri: config.redirectUri,
@@ -126,10 +126,9 @@ router.post('/callback', optionalAuthMiddleware, async (req: Request, res: Respo
     
     // 如果已登录，保存 Token 到用户配置
     if (req.userId) {
-      // 同时保存应用配置（从全局配置获取），确保用户配置完整
       const globalConfig = getPublisherConfig();
       if (globalConfig) {
-        userAuthConfigService.upsertConfig(req.userId, {
+        await userAuthConfigService.upsertConfig(req.userId, {
           clientKey: globalConfig.clientKey,
           clientSecret: globalConfig.clientSecret,
           redirectUri: globalConfig.redirectUri,
@@ -139,7 +138,7 @@ router.post('/callback', optionalAuthMiddleware, async (req: Request, res: Respo
           expiresAt: tokenInfo.expiresAt,
         });
       } else {
-        userAuthConfigService.updateTokens(req.userId, {
+        await userAuthConfigService.updateTokens(req.userId, {
           accessToken: tokenInfo.accessToken,
           refreshToken: tokenInfo.refreshToken,
           openId: tokenInfo.openId,
@@ -186,14 +185,14 @@ router.post('/refresh', optionalAuthMiddleware, async (req: Request, res: Respon
     
     // 如果已登录，更新用户配置中的 Token
     if (req.userId) {
-      userAuthConfigService.updateTokens(req.userId, {
+      await userAuthConfigService.updateTokens(req.userId, {
         accessToken: tokenInfo.accessToken,
         refreshToken: tokenInfo.refreshToken,
         openId: tokenInfo.openId,
         expiresAt: tokenInfo.expiresAt,
       });
     }
-    appConfigService.setDouyinConfig({
+    await appConfigService.setDouyinConfig({
       accessToken: tokenInfo.accessToken,
       refreshToken: tokenInfo.refreshToken,
       openId: tokenInfo.openId,
@@ -335,7 +334,7 @@ router.post('/login/douyin/callback', async (req: Request, res: Response) => {
     const user = await userService.createOrUpdateFromDouyin(douyinUserInfo);
 
     // 4. 保存抖音 Token 到用户配置
-    userAuthConfigService.upsertConfig(user.id, {
+    await userAuthConfigService.upsertConfig(user.id, {
       clientKey: config.clientKey,
       clientSecret: config.clientSecret,
       redirectUri: config.redirectUri,
@@ -343,7 +342,7 @@ router.post('/login/douyin/callback', async (req: Request, res: Response) => {
       refreshToken: refreshTokenValue,
       openId: openId,
     });
-    userAuthConfigService.updateTokens(user.id, {
+    await userAuthConfigService.updateTokens(user.id, {
       accessToken: accessToken,
       refreshToken: refreshTokenValue,
       openId: openId,
@@ -351,7 +350,7 @@ router.post('/login/douyin/callback', async (req: Request, res: Response) => {
     });
 
     // 5. 同时更新全局配置（保持向后兼容）
-    appConfigService.setDouyinConfig({
+    await appConfigService.setDouyinConfig({
       clientKey: config.clientKey,
       clientSecret: config.clientSecret,
       redirectUri: config.redirectUri,

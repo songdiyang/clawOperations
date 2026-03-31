@@ -163,7 +163,7 @@ router.post('/quality-check', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/config', (req: Request, res: Response) => {
+router.post('/config', async (req: Request, res: Response) => {
   try {
     const { deepseekApiKey } = req.body as { deepseekApiKey?: string };
 
@@ -174,7 +174,7 @@ router.post('/config', (req: Request, res: Response) => {
       });
     }
 
-    appConfigService.setAIConfig({
+    await appConfigService.setAIConfig({
       deepseekApiKey: deepseekApiKey.trim(),
     });
     resetAIServices();
@@ -349,7 +349,7 @@ router.post('/publish', async (req: Request, res: Response) => {
 
     // 保存到历史记录（持久化）
     try {
-      creationTaskService.saveToHistory({
+      await creationTaskService.saveToHistory({
         id: result.taskId || `ai_${Date.now()}`,
         status: result.success ? 'completed' : 'failed',
         requirement: input,
@@ -430,7 +430,7 @@ router.get('/tasks', async (req: Request, res: Response) => {
     const inProgressTasks = service.getAllTasks();
     
     // 从数据库获取历史任务（最近 50 条）
-    const historyTasks = creationTaskService.getHistory({ limit: 50 });
+    const historyTasks = await creationTaskService.getHistory({ limit: 50 });
     
     // 将历史任务转换为 AI 任务格式
     const persistedTasks = historyTasks.map(task => ({
@@ -519,7 +519,7 @@ router.post('/drafts', async (req: Request, res: Response) => {
       });
     }
 
-    const draft = creationTaskService.saveDraft(draftData);
+    const draft = await creationTaskService.saveDraft(draftData);
     
     res.json({
       success: true,
@@ -539,7 +539,7 @@ router.post('/drafts', async (req: Request, res: Response) => {
  */
 router.get('/drafts', async (req: Request, res: Response) => {
   try {
-    const drafts = creationTaskService.listDrafts();
+    const drafts = await creationTaskService.listDrafts();
     
     res.json({
       success: true,
@@ -560,7 +560,7 @@ router.get('/drafts', async (req: Request, res: Response) => {
 router.get('/drafts/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const draft = creationTaskService.getDraft(id);
+    const draft = await creationTaskService.getDraft(id);
     
     if (!draft) {
       return res.status(404).json({
@@ -590,7 +590,7 @@ router.put('/drafts/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
     const draftData = req.body as Partial<CreationTask>;
     
-    const draft = creationTaskService.updateDraft(id, draftData);
+    const draft = await creationTaskService.updateDraft(id, draftData);
     
     if (!draft) {
       return res.status(404).json({
@@ -618,7 +618,7 @@ router.put('/drafts/:id', async (req: Request, res: Response) => {
 router.delete('/drafts/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const success = creationTaskService.deleteDraft(id);
+    const success = await creationTaskService.deleteDraft(id);
     
     if (!success) {
       return res.status(404).json({
@@ -646,7 +646,7 @@ router.delete('/drafts/:id', async (req: Request, res: Response) => {
 router.post('/drafts/:id/resume', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const draft = creationTaskService.resumeDraft(id);
+    const draft = await creationTaskService.resumeDraft(id);
     
     if (!draft) {
       return res.status(404).json({
@@ -678,8 +678,8 @@ router.get('/history', async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = parseInt(req.query.offset as string) || 0;
     
-    const history = creationTaskService.getHistory({ limit, offset });
-    const total = creationTaskService.getHistoryCount();
+    const history = await creationTaskService.getHistory({ limit, offset });
+    const total = await creationTaskService.getHistoryCount();
     
     res.json({
       success: true,
@@ -705,7 +705,7 @@ router.get('/history', async (req: Request, res: Response) => {
 router.get('/history/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const history = creationTaskService.getHistoryById(id);
+    const history = await creationTaskService.getHistoryById(id);
     
     if (!history) {
       return res.status(404).json({
@@ -776,7 +776,7 @@ router.post('/templates', async (req: Request, res: Response) => {
       });
     }
 
-    const template = creationTaskService.createTemplate({
+    const template = await creationTaskService.createTemplate({
       name,
       description,
       requirement,
@@ -803,7 +803,7 @@ router.post('/templates', async (req: Request, res: Response) => {
  */
 router.get('/templates', async (req: Request, res: Response) => {
   try {
-    const templates = creationTaskService.listTemplates();
+    const templates = await creationTaskService.listTemplates();
     
     res.json({
       success: true,
@@ -824,7 +824,7 @@ router.get('/templates', async (req: Request, res: Response) => {
 router.get('/templates/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const template = creationTaskService.getTemplate(id);
+    const template = await creationTaskService.getTemplate(id);
     
     if (!template) {
       return res.status(404).json({
@@ -852,7 +852,7 @@ router.get('/templates/:id', async (req: Request, res: Response) => {
 router.delete('/templates/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const success = creationTaskService.deleteTemplate(id);
+    const success = await creationTaskService.deleteTemplate(id);
     
     if (!success) {
       return res.status(404).json({
@@ -880,7 +880,7 @@ router.delete('/templates/:id', async (req: Request, res: Response) => {
 router.post('/templates/:id/use', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const template = creationTaskService.useTemplate(id);
+    const template = await creationTaskService.useTemplate(id);
     
     if (!template) {
       return res.status(404).json({
@@ -917,7 +917,7 @@ router.post('/workflow/start', async (req: Request, res: Response) => {
     
     // 如果使用模板
     if (templateId) {
-      const template = creationTaskService.useTemplate(templateId);
+      const template = await creationTaskService.useTemplate(templateId);
       if (template) {
         taskRequirement = template.requirement;
         taskContentType = template.contentTypePreference;
@@ -933,7 +933,7 @@ router.post('/workflow/start', async (req: Request, res: Response) => {
     }
 
     // 创建新的创作任务
-    const task = creationTaskService.saveDraft({
+    const task = await creationTaskService.saveDraft({
       requirement: taskRequirement,
       contentTypePreference: taskContentType,
       referenceImageUrl: taskReferenceImageUrl,
@@ -976,7 +976,7 @@ router.post('/workflow/step', async (req: Request, res: Response) => {
       });
     }
 
-    let task = creationTaskService.getDraft(taskId);
+    let task = await creationTaskService.getDraft(taskId);
     if (!task) {
       return res.status(404).json({
         success: false,
@@ -988,11 +988,11 @@ router.post('/workflow/step', async (req: Request, res: Response) => {
     switch (step) {
       case 'analyze': {
         // 更新状态为分析中
-        task = creationTaskService.updateDraft(taskId, {
+        task = (await creationTaskService.updateDraft(taskId, {
           status: 'analyzing',
           currentStepMessage: '正在分析需求...',
           progress: 10,
-        })!;
+        }))!;
         
         // 执行分析
         const analyzer = getRequirementAnalyzer();
@@ -1004,13 +1004,13 @@ router.post('/workflow/step', async (req: Request, res: Response) => {
         }
         
         // 更新任务
-        task = creationTaskService.updateDraft(taskId, {
+        task = (await creationTaskService.updateDraft(taskId, {
           status: 'draft',
           analysis,
           lastCompletedStep: 1,
           progress: 25,
           currentStepMessage: '需求分析完成',
-        })!;
+        }))!;
         break;
       }
       
@@ -1023,11 +1023,11 @@ router.post('/workflow/step', async (req: Request, res: Response) => {
         }
         
         // 更新状态为生成中
-        task = creationTaskService.updateDraft(taskId, {
+        task = (await creationTaskService.updateDraft(taskId, {
           status: 'generating',
           currentStepMessage: `正在生成${task.analysis.contentType === 'image' ? '图片' : '视频'}...`,
           progress: 35,
-        })!;
+        }))!;
         
         // 执行生成，传递参考图 URL
         const generator = getContentGenerator();
@@ -1036,13 +1036,13 @@ router.post('/workflow/step', async (req: Request, res: Response) => {
         });
         
         // 更新任务
-        task = creationTaskService.updateDraft(taskId, {
+        task = (await creationTaskService.updateDraft(taskId, {
           status: 'draft',
           content,
           lastCompletedStep: 2,
           progress: 50,
           currentStepMessage: '内容生成完成',
-        })!;
+        }))!;
         break;
       }
       
@@ -1055,49 +1055,49 @@ router.post('/workflow/step', async (req: Request, res: Response) => {
         }
         
         // 更新状态为文案生成中
-        task = creationTaskService.updateDraft(taskId, {
+        task = (await creationTaskService.updateDraft(taskId, {
           status: 'copywriting',
           currentStepMessage: '正在生成文案...',
           progress: 60,
-        })!;
+        }))!;
         
         // 执行文案生成
         const copyGenerator = getCopywritingGenerator();
         const copywriting = await copyGenerator.generate(task.analysis!);
         
         // 更新任务
-        task = creationTaskService.updateDraft(taskId, {
+        task = (await creationTaskService.updateDraft(taskId, {
           status: 'draft',
           copywriting,
           lastCompletedStep: 3,
           progress: 75,
           currentStepMessage: '文案生成完成',
-        })!;
+        }))!;
         break;
       }
       
       case 'preview': {
         // 标记预览完成
-        task = creationTaskService.updateDraft(taskId, {
+        task = (await creationTaskService.updateDraft(taskId, {
           status: 'preview',
           lastCompletedStep: 4,
           progress: 90,
           currentStepMessage: '预览就绪',
-        })!;
+        }))!;
         break;
       }
       
       case 'complete': {
         // 标记完成并保存到历史
-        task = creationTaskService.updateDraft(taskId, {
+        task = (await creationTaskService.updateDraft(taskId, {
           status: 'completed',
           lastCompletedStep: 5,
           progress: 100,
           currentStepMessage: '创作完成',
-        })!;
+        }))!;
         
         // 保存到历史记录
-        creationTaskService.saveToHistory(task);
+        await creationTaskService.saveToHistory(task);
         break;
       }
       
@@ -1124,7 +1124,7 @@ router.post('/workflow/step', async (req: Request, res: Response) => {
     // 如果有任务 ID，更新状态为失败
     const { taskId } = req.body;
     if (taskId) {
-      creationTaskService.updateDraft(taskId, {
+      await creationTaskService.updateDraft(taskId, {
         status: 'failed',
         error: error.message,
         currentStepMessage: '执行失败: ' + error.message,
@@ -1144,7 +1144,7 @@ router.post('/workflow/step', async (req: Request, res: Response) => {
 router.get('/workflow/:id/next-action', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const task = creationTaskService.getDraft(id);
+    const task = await creationTaskService.getDraft(id);
     
     if (!task) {
       return res.status(404).json({
@@ -1248,7 +1248,7 @@ router.post('/generate-hooks', async (req: Request, res: Response) => {
  */
 router.get('/analytics', async (req: Request, res: Response) => {
   try {
-    const allTasks = creationTaskService.getHistory({ limit: 1000 }) || [];
+    const allTasks = (await creationTaskService.getHistory({ limit: 1000 })) || [];
 
     const totalTasks = allTasks.length;
     const completedTasks = allTasks.filter((t: any) => t.status === 'completed').length;

@@ -15,7 +15,7 @@ declare global {
 /**
  * 认证中间件 - 必须登录
  */
-export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+export async function authMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
   const token = extractTokenFromHeader(authHeader);
 
@@ -37,7 +37,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
   }
 
   // 验证用户是否存在且有效
-  const user = userService.findById(payload.userId);
+  const user = await userService.findById(payload.userId);
   if (!user || user.is_active !== 1) {
     res.status(401).json({
       success: false,
@@ -56,14 +56,14 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
 /**
  * 可选认证中间件 - 登录时附加用户信息，未登录也可继续
  */
-export function optionalAuthMiddleware(req: Request, res: Response, next: NextFunction): void {
+export async function optionalAuthMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
   const token = extractTokenFromHeader(authHeader);
 
   if (token) {
     const payload = verifyToken(token);
     if (payload) {
-      const user = userService.findById(payload.userId);
+      const user = await userService.findById(payload.userId);
       if (user && user.is_active === 1) {
         req.user = payload;
         req.userId = payload.userId;
