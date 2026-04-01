@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ConfigProvider, Spin } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -8,6 +8,7 @@ import Publish from './pages/Publish';
 import TaskList from './pages/TaskList';
 import AICreator from './pages/AICreator';
 import Login from './pages/Login';
+import AdminLogin from './pages/AdminLogin';
 import Profile from './pages/Profile';
 import SystemConfig from './pages/SystemConfig';
 import './App.css';
@@ -123,13 +124,26 @@ type PageType = 'ai' | 'auth' | 'publish' | 'tasks' | 'profile' | 'system';
 
 // 开发模式状态键
 const DEV_MODE_KEY = 'clawops_dev_mode';
+const ADMIN_LOGIN_PATH = '/admin-login';
+
+function getAuthPageByPath(): 'login' | 'admin' {
+  const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
+  return pathname === ADMIN_LOGIN_PATH ? 'admin' : 'login';
+}
 
 function AppContent() {
   const [currentPage, setCurrentPage] = useState<PageType>('ai');
+  const [authPage, setAuthPage] = useState<'login' | 'admin'>(getAuthPageByPath);
   const [devMode, setDevMode] = useState(() => {
     return localStorage.getItem(DEV_MODE_KEY) === 'true';
   });
   const { isAuthenticated, isLoading } = useAuth();
+
+  useEffect(() => {
+    const handlePopState = () => setAuthPage(getAuthPageByPath());
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // 进入开发模式
   const enterDevMode = () => {
@@ -160,7 +174,9 @@ function AppContent() {
 
   // 未登录且非开发模式，显示登录页面
   if (!isAuthenticated && !devMode) {
-    return <Login onDevModeEnter={enterDevMode} />;
+    return authPage === 'admin'
+      ? <AdminLogin onDevModeEnter={enterDevMode} />
+      : <Login onDevModeEnter={enterDevMode} />;
   }
 
   // 已登录显示主应用
